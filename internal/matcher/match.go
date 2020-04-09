@@ -8,10 +8,11 @@ import (
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/vulnstore"
 	"github.com/quay/claircore/libvuln/driver"
+	//"github.com/quay/claircore/internal/vulnstore/da_store"
 )
 
 // Match receives an IndexReport and creates a VulnerabilityReport containing matched vulnerabilities
-func Match(ctx context.Context, ir *claircore.IndexReport, matchers []driver.Matcher, store vulnstore.Vulnerability) (*claircore.VulnerabilityReport, error) {
+func Match(ctx context.Context, ir *claircore.IndexReport, matchers []driver.Matcher, store vulnstore.Vulnerability, dastore vulnstore.Vulnerability) (*claircore.VulnerabilityReport, error) {
 	// the vulnerability report we are creating
 	vr := &claircore.VulnerabilityReport{
 		Hash:                   ir.Hash,
@@ -37,7 +38,7 @@ func Match(ctx context.Context, ir *claircore.IndexReport, matchers []driver.Mat
 		for _, m := range matchers {
 			mm := m
 			g.Go(func() error {
-				mc := NewController(mm, store)
+				mc := NewController(mm, store, dastore)
 				vulns, err := mc.Match(ctx, records)
 				if err != nil {
 					return err

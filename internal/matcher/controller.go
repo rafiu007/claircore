@@ -8,6 +8,7 @@ import (
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/vulnstore"
 	"github.com/quay/claircore/libvuln/driver"
+	//"github.com/quay/claircore/internal/vulnstore/da_store"
 )
 
 // Controller is a control structure used to find vulnerabilities affecting
@@ -17,13 +18,16 @@ type Controller struct {
 	m driver.Matcher
 	// a vulnstore.Vulnerability instance for querying vulnerabilities
 	store vulnstore.Vulnerability
+	// a vulnstore.Vulnerability instance for quering python vulnerabilities
+	dastore vulnstore.Vulnerability
 }
 
 // NewController is a constructor for a Controller
-func NewController(m driver.Matcher, store vulnstore.Vulnerability) *Controller {
+func NewController(m driver.Matcher, store vulnstore.Vulnerability, dastore vulnstore.Vulnerability) *Controller {
 	return &Controller{
-		m:     m,
-		store: store,
+		m:       m,
+		store:   store,
+		dastore: dastore,
 	}
 }
 
@@ -102,9 +106,15 @@ func (mc *Controller) query(ctx context.Context, interested []*claircore.IndexRe
 		VersionFiltering: dbSide,
 	}
 	matches, err := mc.store.Get(ctx, interested, getOpts)
+	//calling dastores get function........................................................................
+	matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
+	//need to chnage the if else part to accomodate err2....................................................
 	if err != nil {
 		return nil, err
+	} else if err2 != nil {
+		return matches2, nil
 	}
+	//need to add a merge function to merge matches and matches2 together..............................................
 	return matches, nil
 }
 

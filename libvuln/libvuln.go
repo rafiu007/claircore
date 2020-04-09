@@ -10,6 +10,7 @@ import (
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/matcher"
 	"github.com/quay/claircore/internal/vulnstore"
+	"github.com/quay/claircore/internal/vulnstore/da_store"
 	"github.com/quay/claircore/libvuln/driver"
 )
 
@@ -19,6 +20,10 @@ import (
 // Libvuln also runs background updaters which keep the vulnerability
 // database consistent.
 type Libvuln struct {
+	//change 1.........................................
+	vuln vulnstore.Vulnerability
+	//..................................................
+
 	store        vulnstore.Store
 	db           *sqlx.DB
 	matchers     []driver.Matcher
@@ -55,6 +60,10 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 			Msg("updater error")
 	}
 	l := &Libvuln{
+		//chnage 2..........................
+		vuln: da_store.Store{},
+		//..................................
+
 		store:        vulnstore,
 		db:           db,
 		matchers:     opts.Matchers,
@@ -66,7 +75,11 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 
 // Scan creates a VulnerabilityReport given a manifest's IndexReport.
 func (l *Libvuln) Scan(ctx context.Context, ir *claircore.IndexReport) (*claircore.VulnerabilityReport, error) {
-	return matcher.Match(ctx, ir, l.matchers, l.store)
+	return matcher.Match(ctx, ir, l.matchers, l.store, l.vuln)
+
+	//chnage 3...................
+	//include l.vuln in parameter
+	//...........................
 }
 
 // UpdateOperations returns UpdateOperations in date descending order keyed by the
