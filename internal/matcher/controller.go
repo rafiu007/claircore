@@ -8,7 +8,7 @@ import (
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/vulnstore"
 	"github.com/quay/claircore/libvuln/driver"
-	//"github.com/quay/claircore/internal/vulnstore/da_store"
+	//"github.com/quay/claircore/internal/vulnstore/dastore"
 )
 
 // Controller is a control structure used to find vulnerabilities affecting

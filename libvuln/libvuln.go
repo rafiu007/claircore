@@ -10,7 +10,7 @@ import (
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/matcher"
 	"github.com/quay/claircore/internal/vulnstore"
-	"github.com/quay/claircore/internal/vulnstore/da_store"
+	"github.com/quay/claircore/internal/vulnstore/dastore"
 	"github.com/quay/claircore/libvuln/driver"
 )
 
@@ -61,7 +61,7 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 	}
 	l := &Libvuln{
 		//chnage 2..........................
-		vuln: da_store.Store{},
+		vuln: dastore.Store{},
 		//..................................
 
 		store:        vulnstore,
