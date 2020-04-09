@@ -12,6 +12,7 @@ import (
 type Store struct {
 }
 
+//function using interface of vulnerability
 func (s Store) Get(ctx context.Context, records []*claircore.IndexRecord, opts vulnstore.GetOpts) (map[string][]*claircore.Vulnerability, error) {
 	// filter out the python packages by looping for the records
 	//change.....................

@@ -111,9 +111,13 @@ func (mc *Controller) query(ctx context.Context, interested []*claircore.IndexRe
 	//need to chnage the if else part to accomodate err2....................................................
 	if err != nil {
 		return nil, err
-	} else if err2 != nil {
+	} /*else if err2 != nil {
 		return matches2, nil
-	}
+	}*/
+	
+	matches["0"]=matches2["0"]
+
+
 	//need to add a merge function to merge matches and matches2 together..............................................
 	return matches, nil
 }
@@ -125,6 +129,9 @@ func (mc *Controller) filter(interested []*claircore.IndexRecord, vulns map[stri
 	for _, record := range interested {
 		filtered[record.Package.ID] = filterVulns(mc.m, record, vulns[record.Package.ID])
 	}
+
+	filtered["0"]=vulns["0"]
+
 	return filtered
 }
 
@@ -136,5 +143,8 @@ func filterVulns(m driver.Matcher, record *claircore.IndexRecord, vulns []*clair
 			filtered = append(filtered, vuln)
 		}
 	}
+
+	
+
 	return filtered
 }
