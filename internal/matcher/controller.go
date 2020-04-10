@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
@@ -31,6 +32,7 @@ func NewController(m driver.Matcher, store vulnstore.Vulnerability, dastore vuln
 	}
 }
 
+//Match just a comment
 func (mc *Controller) Match(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "internal/matcher/Controller.Match").
@@ -105,18 +107,20 @@ func (mc *Controller) query(ctx context.Context, interested []*claircore.IndexRe
 		Debug:            true,
 		VersionFiltering: dbSide,
 	}
+
+	matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
+
 	matches, err := mc.store.Get(ctx, interested, getOpts)
 	//calling dastores get function........................................................................
-	matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
+
 	//need to chnage the if else part to accomodate err2....................................................
 	if err != nil {
 		return nil, err
-	} /*else if err2 != nil {
-		return matches2, nil
-	}*/
-	
-	matches["0"]=matches2["0"]
+	}
 
+	fmt.Printf("%v", err2)
+
+	matches["0"] = matches2["0"]
 
 	//need to add a merge function to merge matches and matches2 together..............................................
 	return matches, nil
@@ -130,7 +134,7 @@ func (mc *Controller) filter(interested []*claircore.IndexRecord, vulns map[stri
 		filtered[record.Package.ID] = filterVulns(mc.m, record, vulns[record.Package.ID])
 	}
 
-	filtered["0"]=vulns["0"]
+	filtered["0"] = vulns["0"]
 
 	return filtered
 }
@@ -143,8 +147,6 @@ func filterVulns(m driver.Matcher, record *claircore.IndexRecord, vulns []*clair
 			filtered = append(filtered, vuln)
 		}
 	}
-
-	
 
 	return filtered
 }
