@@ -108,7 +108,7 @@ func (mc *Controller) query(ctx context.Context, interested []*claircore.IndexRe
 		VersionFiltering: dbSide,
 	}
 
-	matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
+	//matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
 
 	matches, err := mc.store.Get(ctx, interested, getOpts)
 	//calling dastores get function........................................................................
@@ -118,9 +118,19 @@ func (mc *Controller) query(ctx context.Context, interested []*claircore.IndexRe
 		return nil, err
 	}
 
-	fmt.Printf("%v", err2)
+	//fmt.Printf("%v", err2)
 
-	matches["0"] = matches2["0"]
+	if mc.m.Name() == "python" {
+
+		matches2, err2 := mc.dastore.Get(ctx, interested, getOpts)
+		//matches["0"] = matches2["0"]
+
+		for k, _ := range matches2 {
+			matches[k] = matches2[k]
+		}
+
+		fmt.Printf("%v", err2)
+	}
 
 	//need to add a merge function to merge matches and matches2 together..............................................
 	return matches, nil
@@ -134,7 +144,10 @@ func (mc *Controller) filter(interested []*claircore.IndexRecord, vulns map[stri
 		filtered[record.Package.ID] = filterVulns(mc.m, record, vulns[record.Package.ID])
 	}
 
-	filtered["0"] = vulns["0"]
+	//filtered["0"] = vulns["0"]
+	for k, _ := range vulns {
+		filtered[k] = vulns[k]
+	}
 
 	return filtered
 }
