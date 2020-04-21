@@ -16,6 +16,15 @@ import (
 	"github.com/quay/claircore/internal/vulnstore"
 )
 
+type Cvee struct {
+	Cve_id   []string `json:"cve_id"`
+	Fixed_in []string `json:"fixed_in"`
+}
+
+type Data struct {
+	Cvee Cvee `json:"cve"`
+}
+
 //Creating a structre for json
 type Cve struct {
 	Idd  string  `json:"id"`
@@ -37,6 +46,7 @@ type Recommendation struct {
 //Creating a structre for json
 type Result struct {
 	Recommendation Recommendation `json:"recommendation"`
+	Data           []Data         `json:"data"`
 }
 
 //Report Creating a structre for json
@@ -77,14 +87,14 @@ func get(ctx context.Context, records []*claircore.IndexRecord, opts vulnstore.G
 			fmt.Println("...................................................................................................................................................")
 			v := &claircore.Vulnerability{
 
-				ID:                 j.Package.ID,
-				Updater:            "abc",
+				ID:                 j.Package.ID + reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
+				Updater:            "",
 				Name:               j.Package.Name,
 				Description:        reports.Result.Recommendation.Message,
-				Links:              "dummy_flask",
+				Links:              "",
 				Severity:           fmt.Sprint(reports.Result.Recommendation.ComponentAnalysis.Cve[0].Cvss),
-				NormalizedSeverity: "dummy_flask",
-				FixedInVersion:     reports.Result.Recommendation.ChangeTo,
+				NormalizedSeverity: "",
+				FixedInVersion:     reports.Result.Data[0].Cvee.Fixed_in[0],
 				Package: &claircore.Package{ID: "0",
 					Name:    "xyz",
 					Version: "v0.0"},
