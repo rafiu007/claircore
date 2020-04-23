@@ -83,13 +83,12 @@ func get(ctx context.Context, records []*claircore.IndexRecord, opts vulnstore.G
 		}
 
 		if len(reports.Result.Recommendation.ComponentAnalysis.Cve) > 0 {
-			fmt.Println(reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd)
-			fmt.Println("...................................................................................................................................................")
+
 			v := &claircore.Vulnerability{
 
-				ID:                 j.Package.ID + reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
+				ID:                 j.Package.ID,
 				Updater:            "",
-				Name:               j.Package.Name,
+				Name:               reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
 				Description:        reports.Result.Recommendation.Message,
 				Links:              "",
 				Severity:           fmt.Sprint(reports.Result.Recommendation.ComponentAnalysis.Cve[0].Cvss),
@@ -107,16 +106,11 @@ func get(ctx context.Context, records []*claircore.IndexRecord, opts vulnstore.G
 			results[j.Package.ID] = append(results[j.Package.ID], v)
 
 			//position = position + 1
-		} else {
-			fmt.Println("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
 		}
 
 		fmt.Printf("%v %v", j.Package.Name, j.Package.Version)
 
 	}
-	fmt.Println("...............................................................................................................................")
-	fmt.Println(results["0"])
-	//fmt.Println(position)
 
 	return results, nil
 
