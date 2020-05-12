@@ -86,14 +86,14 @@ func get(ctx context.Context, records []*claircore.IndexRecord, opts vulnstore.G
 
 			v := &claircore.Vulnerability{
 
-				ID:                 j.Package.ID,
-				Updater:            "",
-				Name:               reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
-				Description:        reports.Result.Recommendation.Message,
-				Links:              "",
-				Severity:           fmt.Sprint(reports.Result.Recommendation.ComponentAnalysis.Cve[0].Cvss),
-				NormalizedSeverity: "",
-				FixedInVersion:     reports.Result.Data[0].Cvee.Fixed_in[0],
+				ID:          j.Package.ID,
+				Updater:     "",
+				Name:        reports.Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
+				Description: reports.Result.Recommendation.Message,
+				Links:       "",
+				Severity:    fmt.Sprint(reports.Result.Recommendation.ComponentAnalysis.Cve[0].Cvss),
+				//NormalizedSeverity: "",
+				FixedInVersion: reports.Result.Data[0].Cvee.Fixed_in[0],
 				Package: &claircore.Package{ID: "0",
 					Name:    "xyz",
 					Version: "v0.0"},
