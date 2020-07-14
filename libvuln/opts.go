@@ -22,6 +22,7 @@ import (
 	"github.com/quay/claircore/photon"
 	"github.com/quay/claircore/python"
 	"github.com/quay/claircore/pyupio"
+	"github.com/quay/claircore/crda"
 	"github.com/quay/claircore/rhel"
 	"github.com/quay/claircore/suse"
 	"github.com/quay/claircore/ubuntu"
@@ -91,6 +92,7 @@ var defaultMatchers = []driver.Matcher{
 	&alpine.Matcher{},
 	&aws.Matcher{},
 	&debian.Matcher{},
+	&crda.Matcher{},
 	&python.Matcher{},
 	&ubuntu.Matcher{},
 	&rhel.Matcher{},
