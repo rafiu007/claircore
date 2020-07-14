@@ -60,11 +60,17 @@ type Request struct {
 
 type ReportsId struct {
 	Response []Report
-	startInd int
+	Request []*claircore.IndexRecord
 }
 
-func call(req []Request, startInd int, c chan ReportsId) {
+func call(records []*claircore.IndexRecord, c chan ReportsId) {
 	fmt.Println("Inside call")
+	var req []Request
+	for _, record := range records {
+		req = append(req, Request { Ecosystem: "pypi",
+												Package: record.Package.Name,
+												Version: record.Package.Version})
+	}
 	jsonValue, _ := json.Marshal(req)
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(jsonValue))
 	if err != nil {
@@ -76,7 +82,7 @@ func call(req []Request, startInd int, c chan ReportsId) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		result := ReportsId{Response: da_response, startInd: startInd}
+		result := ReportsId{Response: da_response, Request: records}
 		c <- result
 	}
 }
@@ -87,42 +93,30 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		Logger()
 	ctx = log.WithContext(ctx)
 	results := make(map[string][]*claircore.Vulnerability)
-	iterations := (len(records) / batchSize)
-	if (len(records) % batchSize) != 0 {
-		iterations++
-	}
-	total_records := len(records)
-	ch := make(chan ReportsId, iterations-1)
-	for i := 0; i < iterations; i++ {
-		var req []Request
-		start_record := i * batchSize
-		var end_record int
-		if total_records >= batchSize {
-			end_record = start_record + batchSize - 1
-		} else {
-			end_record = start_record + total_records - 1
+	ch := make(chan ReportsId)
+	count := 0
+	// CRDA remote matcher post API can process `batchSize` records at a time.
+	for i := 0; i < len(records); i += batchSize {
+		j := i + batchSize
+		if j > len(records) {
+			j = len(records)
 		}
-		if total_records >= batchSize {
-			total_records = total_records - batchSize
-		} else {
-			total_records = 0
-		}
-		for record := start_record; record <= end_record; record++ {
-			req = append(req, Request{Ecosystem: "pypi", Package: records[record].Package.Name, Version: records[record].Package.Version})
-		}
-
-		go call(req, start_record, ch)
+		count ++
+		go call(records[i:j], ch)
 	}
 
-	for i := 0; i < iterations; i++ {
-		res := <-ch
-		offset := res.startInd
+	for i := 0; i < count; i++ {
+		res, ok := <-ch
+		if !ok {
+			break
+		}
+		req := res.Request
 		response := res.Response
 		for i := 0; i < len(response); i++ {
 			if len(response[i].Result.Recommendation.ComponentAnalysis.Cve) > 0 {
 				var vulnArray []*claircore.Vulnerability
 				vulnArray = append(vulnArray, &claircore.Vulnerability{
-					ID:          records[i+offset].Package.ID,
+					ID:          req[i].Package.ID,
 					Updater:     "",
 					Name:        response[i].Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
 					Description: response[i].Result.Recommendation.Message,
@@ -137,7 +131,7 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 					Repo: &claircore.Repository{},
 				})
 
-				results[records[i+offset].Package.ID] = vulnArray
+				results[req[i].Package.ID] = vulnArray
 			}
 
 		}
