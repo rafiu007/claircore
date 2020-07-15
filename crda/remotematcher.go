@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 
 	"github.com/rs/zerolog"
@@ -29,7 +30,7 @@ type Data struct {
 }
 
 type Cve struct {
-	Idd  string  `json:"id"`
+	Id   string  `json:"id"`
 	Cvss float32 `json:"cvss"`
 }
 
@@ -60,16 +61,16 @@ type Request struct {
 
 type ReportsId struct {
 	Response []Report
-	Request []*claircore.IndexRecord
+	Request  []*claircore.IndexRecord
 }
 
 func call(records []*claircore.IndexRecord, c chan ReportsId) {
 	fmt.Println("Inside call")
 	var req []Request
 	for _, record := range records {
-		req = append(req, Request { Ecosystem: "pypi",
-												Package: record.Package.Name,
-												Version: record.Package.Version})
+		req = append(req, Request{Ecosystem: "pypi",
+			Package: record.Package.Name,
+			Version: record.Package.Version})
 	}
 	jsonValue, _ := json.Marshal(req)
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(jsonValue))
@@ -92,51 +93,43 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		Str("component", "internal/vulnstore/dastore/get").
 		Logger()
 	ctx = log.WithContext(ctx)
-	results := make(map[string][]*claircore.Vulnerability)
 	ch := make(chan ReportsId)
-	count := 0
+	recordLen := len(records)
 	// CRDA remote matcher post API can process `batchSize` records at a time.
-	for i := 0; i < len(records); i += batchSize {
+	for i := 0; i < recordLen; i += batchSize {
 		j := i + batchSize
-		if j > len(records) {
-			j = len(records)
+		if j > recordLen {
+			j = recordLen
 		}
-		count ++
 		go call(records[i:j], ch)
 	}
 
-	for i := 0; i < count; i++ {
+	results := make(map[string][]*claircore.Vulnerability)
+	batchLen := int(math.Ceil(float64(recordLen) / float64(batchSize)))
+	for i := 0; i < batchLen; i++ {
 		res, ok := <-ch
 		if !ok {
 			break
 		}
+
 		req := res.Request
 		response := res.Response
-		for i := 0; i < len(response); i++ {
-			if len(response[i].Result.Recommendation.ComponentAnalysis.Cve) > 0 {
-				var vulnArray []*claircore.Vulnerability
+		for i, r := range response {
+			var vulnArray []*claircore.Vulnerability
+			// A package can have multiple vulnerability for single version.
+			for _, cve := range r.Result.Recommendation.ComponentAnalysis.Cve {
 				vulnArray = append(vulnArray, &claircore.Vulnerability{
-					ID:          req[i].Package.ID,
-					Updater:     "",
-					Name:        response[i].Result.Recommendation.ComponentAnalysis.Cve[0].Idd,
-					Description: response[i].Result.Recommendation.Message,
-					Links:       "",
-					Severity:    fmt.Sprint(response[i].Result.Recommendation.ComponentAnalysis.Cve[0].Cvss),
-					// 						// NormalizedSeverity: "",
-					FixedInVersion: response[i].Result.Data[0].Cvee.Fixed_in[0],
-					Package: &claircore.Package{ID: "0",
-						Name:    "xyz",
-						Version: "v0.0"},
-					Dist: &claircore.Distribution{},
-					Repo: &claircore.Repository{},
+					ID:             cve.Id,
+					Updater:        "crda",
+					Name:           cve.Id,
+					Description:    r.Result.Recommendation.Message,
+					Severity:       fmt.Sprint(cve.Cvss),
+					FixedInVersion: r.Result.Recommendation.ChangeTo,
+					Package:        req[i].Package,
 				})
-
-				results[req[i].Package.ID] = vulnArray
 			}
-
+			results[req[i].Package.ID] = vulnArray
 		}
-
 	}
 	return results, nil
-
 }
