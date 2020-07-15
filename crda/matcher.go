@@ -7,7 +7,6 @@ import (
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/libvuln/driver"
-	"github.com/quay/claircore/pkg/pep440"
 )
 
 var (
@@ -29,28 +28,16 @@ func (*Matcher) Filter(record *claircore.IndexRecord) bool {
 
 // Query implements driver.Matcher.
 func (*Matcher) Query() []driver.MatchConstraint {
-	return []driver.MatchConstraint{}
+	panic("unreachable")
 }
 
 // Vulnerable implements driver.Matcher.
 func (*Matcher) Vulnerable(record *claircore.IndexRecord, vuln *claircore.Vulnerability) bool {
-	if vuln.Range != nil && record.Package.NormalizedVersion.Kind != "" {
-		return vuln.Range.Contains(&record.Package.NormalizedVersion)
-	}
-
-	pkg, err := pep440.Parse(record.Package.Version)
-	if err != nil {
-		return false
-	}
-	fixed, err := pep440.Parse(vuln.FixedInVersion)
-	if err != nil {
-		return false
-	}
-	// pkg < fixed
-	return pkg.Compare(&fixed) == -1
+	// RemoteMatcher can match Package and Vulnerability.
+	panic("unreachable")
 }
 
-// QueryRemoteMatcher implements driver.RemoteMatcher
+// QueryRemoteMatcher implements driver.RemoteMatcher.
 func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "crda/matcher/RemoteMatcher.QueryRemoteMatcher").

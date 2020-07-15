@@ -30,7 +30,7 @@ type Data struct {
 }
 
 type Cve struct {
-	Id   string  `json:"id"`
+	ID   string  `json:"id"`
 	Cvss float32 `json:"cvss"`
 }
 
@@ -59,12 +59,12 @@ type Request struct {
 	Version   string `json:"version"`
 }
 
-type ReportsId struct {
+type ReportsID struct {
 	Response []Report
 	Request  []*claircore.IndexRecord
 }
 
-func call(records []*claircore.IndexRecord, c chan ReportsId) {
+func call(records []*claircore.IndexRecord, c chan ReportsID) {
 	fmt.Println("Inside call")
 	var req []Request
 	for _, record := range records {
@@ -83,7 +83,7 @@ func call(records []*claircore.IndexRecord, c chan ReportsId) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		result := ReportsId{Response: da_response, Request: records}
+		result := ReportsID{Response: da_response, Request: records}
 		c <- result
 	}
 }
@@ -93,7 +93,7 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		Str("component", "internal/vulnstore/dastore/get").
 		Logger()
 	ctx = log.WithContext(ctx)
-	ch := make(chan ReportsId)
+	ch := make(chan ReportsID)
 	recordLen := len(records)
 	// CRDA remote matcher post API can process `batchSize` records at a time.
 	for i := 0; i < recordLen; i += batchSize {
@@ -119,9 +119,9 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 			// A package can have multiple vulnerability for single version.
 			for _, cve := range r.Result.Recommendation.ComponentAnalysis.Cve {
 				vulnArray = append(vulnArray, &claircore.Vulnerability{
-					ID:             cve.Id,
+					ID:             cve.ID,
 					Updater:        "crda",
-					Name:           cve.Id,
+					Name:           cve.ID,
 					Description:    r.Result.Recommendation.Message,
 					Severity:       fmt.Sprint(cve.Cvss),
 					FixedInVersion: r.Result.Recommendation.ChangeTo,
