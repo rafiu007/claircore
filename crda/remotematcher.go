@@ -20,51 +20,24 @@ const (
 )
 
 // Build struct to model CRDA ComponentAnalysis response.
-type Cvee struct {
-	Cve_id   []string `json:"cve_id"`
-	Fixed_in []string `json:"fixed_in"`
+
+type Vulnerability struct {
+	ID			string	`json:"vendor_cve_ids"`
+	CVSS		string	`json:"cvss"`
 }
 
-type Data struct {
-	Cvee Cvee `json:"cve"`
-}
-
-type Cve struct {
-	ID   string  `json:"id"`
-	Cvss float32 `json:"cvss"`
-}
-
-type ComponentAnalysis struct {
-	Cve []Cve `json:"cve"`
-}
-
-type Recommendation struct {
-	ChangeTo          string            `json:"change_to"`
-	Message           string            `json:"message"`
-	ComponentAnalysis ComponentAnalysis `json:"component-analyses"`
-}
-
-type Result struct {
-	Recommendation Recommendation `json:"recommendation"`
-	Data           []Data         `json:"data"`
+type Analyses struct {
+	Vulnerabilities	[]Vulnerability	`json:"vulnerability"`
 }
 
 type Report struct {
-	Result Result `json:"result"`
+	RecommendationVersion string		`json:"recommended_versions"`
+	Severity							string		`json:"severity"`
+	Message							  string		`json:"message"`
+	Analyses							Analyses	`json:"component_analyses"`
 }
 
-type Request struct {
-	Ecosystem string `json:"ecosystem"`
-	Package   string `json:"package"`
-	Version   string `json:"version"`
-}
-
-type ReportsID struct {
-	Response []Report
-	Request  []*claircore.IndexRecord
-}
-
-func call(records []*claircore.IndexRecord, c chan ReportsID) {
+func call(records *claircore.IndexRecord, c chan Report) {
 	fmt.Println("Inside call")
 	var req []Request
 	for _, record := range records {
