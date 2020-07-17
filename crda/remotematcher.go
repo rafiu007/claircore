@@ -115,11 +115,10 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		// A package can have multiple vulnerability for a version.
 		for _, vuln := range r.Analyses.Vulnerabilities {
 			results[r.record.Package.ID] = append(results[r.record.Package.ID], &claircore.Vulnerability{
-				ID:          vuln.ID,
-				Updater:     "Code Ready Analytics",
-				Name:        vuln.ID,
-				Description: fmt.Sprintf("%s cvss: %s", r.Message, vuln.CVSS),
-				// Fixme: Links should be part of response.
+				ID:                 vuln.ID,
+				Updater:            "Code Ready Analytics",
+				Name:               vuln.ID,
+				Description:        fmt.Sprintf("%s cvss: %s", r.Message, vuln.CVSS),
 				Links:              fmt.Sprintf("https://snyk.io/vuln/%s", vuln.ID),
 				Severity:           r.Severity,
 				NormalizedSeverity: NormalizeSeverity(r.Severity),
