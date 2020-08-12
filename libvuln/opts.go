@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/quay/claircore/alpine"
 	"github.com/quay/claircore/aws"
+	"github.com/quay/claircore/crda"
 	"github.com/quay/claircore/debian"
 	"github.com/quay/claircore/libvuln/driver"
 	"github.com/quay/claircore/libvuln/migrations"
@@ -22,7 +24,6 @@ import (
 	"github.com/quay/claircore/photon"
 	"github.com/quay/claircore/python"
 	"github.com/quay/claircore/pyupio"
-	"github.com/quay/claircore/crda"
 	"github.com/quay/claircore/rhel"
 	"github.com/quay/claircore/suse"
 	"github.com/quay/claircore/ubuntu"
@@ -88,18 +89,7 @@ type Opts struct {
 // defaultMacheter is a variable containing
 // all the matchers libvuln will use to match
 // index records to vulnerabilities.
-var defaultMatchers = []driver.Matcher{
-	&alpine.Matcher{},
-	&aws.Matcher{},
-	&debian.Matcher{},
-	&crda.Matcher{},
-	&python.Matcher{},
-	&ubuntu.Matcher{},
-	&rhel.Matcher{},
-	&photon.Matcher{},
-	&suse.Matcher{},
-	&oracle.Matcher{},
-}
+var defaultMatchers []driver.Matcher
 
 // parse is an internal method for constructing
 // the necessary Updaters and Matchers for Libvuln
@@ -128,6 +118,18 @@ func (o *Opts) parse(ctx context.Context) error {
 		o.UpdateWorkers = DefaultUpdateWorkers
 	}
 
+	// initialize default matchers
+	defaultMatchers = []driver.Matcher{
+		&alpine.Matcher{},
+		&aws.Matcher{},
+		&debian.Matcher{},
+		&crda.Matcher{},
+		&python.Matcher{},
+		&ubuntu.Matcher{},
+		&rhel.Matcher{},
+		&photon.Matcher{},
+	}
+
 	// merge default matchers with any out-of-tree specified
 	o.Matchers = append(o.Matchers, defaultMatchers...)
 
@@ -136,7 +138,11 @@ func (o *Opts) parse(ctx context.Context) error {
 
 var defaultFactoryConstructors = map[string]func(context.Context) (driver.UpdaterSetFactory, error){
 	"rhel": func(ctx context.Context) (driver.UpdaterSetFactory, error) {
-		return rhel.NewFactory(ctx, rhel.DefaultManifest)
+		manifestURL := os.Getenv("REDHAT_OVAL_MANIFEST_URL")
+		if manifestURL == "" {
+			manifestURL = rhel.DefaultManifest
+		}
+		return rhel.NewFactory(ctx, manifestURL)
 	},
 	"ubuntu": func(_ context.Context) (driver.UpdaterSetFactory, error) {
 		return &ubuntu.Factory{Releases: ubuntu.Releases}, nil

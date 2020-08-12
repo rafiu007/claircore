@@ -13,6 +13,8 @@ import (
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/pkg/cpe"
+	"github.com/quay/claircore/rhel/containerapi"
+	"github.com/quay/claircore/rhel/repo2cpe"
 	"github.com/quay/claircore/test/log"
 )
 
@@ -22,29 +24,45 @@ func TestRepositoryScanner(t *testing.T) {
 	defer done()
 
 	// Set up a response map and test server to mock the Container API.
-	resp := map[string]*containerImages{
-		"rh-pkg-1-1": &containerImages{Images: []containerImage{
+	apiData := map[string]*containerapi.ContainerImages{
+		"rh-pkg-1-1": &containerapi.ContainerImages{Images: []containerapi.ContainerImage{
 			{
-				CPE: []string{
+				CPEs: []string{
 					"cpe:/o:redhat:enterprise_linux:8::computenode",
 					"cpe:/o:redhat:enterprise_linux:8::baseos",
 				},
-				ParsedData: parsedData{
+				ParsedData: containerapi.ParsedData{
 					Architecture: "x86_64",
-					Labels: []label{
+					Labels: []containerapi.Label{
 						{Name: "architecture", Value: "x86_64"},
 					},
 				},
 			},
 		}},
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Log(r.URL.String())
-		nvr := path.Base(r.URL.Path)
-		if err := json.NewEncoder(w).Encode(resp[nvr]); err != nil {
+	mappingData := repo2cpe.MappingFile{Data: map[string]repo2cpe.Repo{
+		"content-set-1": repo2cpe.Repo{
+			CPEs: []string{"cpe:/o:redhat:enterprise_linux:6::server", "cpe:/o:redhat:enterprise_linux:7::server"},
+		},
+		"content-set-2": repo2cpe.Repo{
+			CPEs: []string{"cpe:/o:redhat:enterprise_linux:7::server", "cpe:/o:redhat:enterprise_linux:8::server"},
+		},
+	}}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repository-2-cpe.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("last-modified", "Mon, 02 Jan 2006 15:04:05 MST")
+		if err := json.NewEncoder(w).Encode(mappingData); err != nil {
 			t.Fatal(err)
 		}
-	}))
+	})
+	mux.HandleFunc("/v1/images/nvr/", func(w http.ResponseWriter, r *http.Request) {
+		path := path.Base(r.URL.Path)
+		if err := json.NewEncoder(w).Encode(apiData[path]); err != nil {
+			t.Fatal(err)
+		}
+	})
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	table := []struct {
@@ -58,27 +76,50 @@ func TestRepositoryScanner(t *testing.T) {
 			want: []*claircore.Repository{
 				&claircore.Repository{
 					Name: "cpe:/o:redhat:enterprise_linux:8::computenode",
-					Key:  "rhel-cpe-repo",
+					Key:  RedHatRepositoryKey,
 					CPE:  cpe.MustUnbind("cpe:/o:redhat:enterprise_linux:8::computenode"),
 				},
 				&claircore.Repository{
 					Name: "cpe:/o:redhat:enterprise_linux:8::baseos",
-					Key:  "rhel-cpe-repo",
+					Key:  RedHatRepositoryKey,
 					CPE:  cpe.MustUnbind("cpe:/o:redhat:enterprise_linux:8::baseos"),
 				},
 			},
-			cfg:       &RepoScannerConfig{API: srv.URL},
+			cfg:       &RepoScannerConfig{API: srv.URL, Repo2CPEMappingURL: srv.URL + "/repository-2-cpe.json"},
 			layerPath: "testdata/layer-with-cpe.tar",
+		},
+		{
+			name: "From mapping file",
+			want: []*claircore.Repository{
+				&claircore.Repository{
+					Name: "cpe:/o:redhat:enterprise_linux:6::server",
+					Key:  RedHatRepositoryKey,
+					CPE:  cpe.MustUnbind("cpe:/o:redhat:enterprise_linux:6::server"),
+				},
+				&claircore.Repository{
+					Name: "cpe:/o:redhat:enterprise_linux:7::server",
+					Key:  RedHatRepositoryKey,
+					CPE:  cpe.MustUnbind("cpe:/o:redhat:enterprise_linux:7::server"),
+				},
+				&claircore.Repository{
+					Name: "cpe:/o:redhat:enterprise_linux:8::server",
+					Key:  RedHatRepositoryKey,
+					CPE:  cpe.MustUnbind("cpe:/o:redhat:enterprise_linux:8::server"),
+				},
+			},
+			cfg:       &RepoScannerConfig{API: srv.URL, Repo2CPEMappingURL: srv.URL + "/repository-2-cpe.json"},
+			layerPath: "testdata/layer-with-embedded-cs.tar",
 		},
 		{
 			name:      "No-cpe-info",
 			want:      nil,
+			cfg:       &RepoScannerConfig{},
 			layerPath: "testdata/layer-with-no-cpe-info.tar",
 		},
 	}
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
-			scanner := &RepositoryScanner{}
+			scanner := NewRepositoryScanner(ctx, nil, tt.cfg.Repo2CPEMappingURL)
 			l := &claircore.Layer{}
 			l.SetLocal(tt.layerPath)
 
