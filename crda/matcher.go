@@ -1,7 +1,7 @@
 package crda
 
 import (
-  "context"
+	"context"
 
 	"github.com/rs/zerolog"
 
@@ -32,7 +32,7 @@ func (*Matcher) Query() []driver.MatchConstraint {
 }
 
 // Vulnerable implements driver.Matcher.
-func (*Matcher) Vulnerable(record *claircore.IndexRecord, vuln *claircore.Vulnerability) bool {
+func (*Matcher) Vulnerable(ctx context.Context, record *claircore.IndexRecord, vuln *claircore.Vulnerability) (bool, error) {
 	// RemoteMatcher can match Package and Vulnerability.
 	panic("unreachable")
 }
@@ -46,5 +46,5 @@ func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.Ind
 	log.Debug().
 		Int("records", len(records)).
 		Msg("interest")
-  return QueryRemoteMatcher(ctx, records)
+	return QueryRemoteMatcher(ctx, records)
 }
