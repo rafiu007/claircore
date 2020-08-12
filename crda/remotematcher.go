@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -17,17 +18,22 @@ import (
 var (
 	urlTemplate = url.URL{
 		Scheme:   "https",
-		Host:     "f8a-analytics-2445582058137.production.gw.apicast.io",
+		Host:     "f8a-analytics-preview-2445582058137.production.gw.apicast.io",
 		Path:     "/api/v2/component-analyses/pypi/%s/%s",
-		RawQuery: "user_key=9e7da76708fe374d8c10fa752e72989f",
+		RawQuery: "user_key=3e42fa66f65124e6b1266a23431e3d08",
 	}
 )
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
 // delivers Snyk sourced Vulnerability information.
 type Vulnerability struct {
-	ID   string `json:"vendor_cve_ids"`
-	CVSS string `json:"cvss"`
+	ID       string   `json:"vendor_cve_ids"`
+	CVSS     string   `json:"cvss"`
+	CVES     []string `json:"cve_ids"`
+	Severity string   `json:"severity"`
+	Title    string   `json:"title"`
+	URL      string   `json:"url"`
+	FixedIn  []string `json:"fixed_in"`
 }
 
 type Analyses struct {
@@ -36,7 +42,6 @@ type Analyses struct {
 
 type VulnReport struct {
 	RecommendedVersion string   `json:"recommended_versions"`
-	Severity           string   `json:"severity"`
 	Message            string   `json:"message"`
 	Analyses           Analyses `json:"component_analyses"`
 	// To map back to input
@@ -116,13 +121,13 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		for _, vuln := range r.Analyses.Vulnerabilities {
 			results[r.record.Package.ID] = append(results[r.record.Package.ID], &claircore.Vulnerability{
 				ID:                 vuln.ID,
-				Updater:            "Code Ready Analytics",
+				Updater:            "CodeReadyAnalytics",
 				Name:               vuln.ID,
-				Description:        fmt.Sprintf("%s cvss: %s", r.Message, vuln.CVSS),
-				Links:              fmt.Sprintf("https://snyk.io/vuln/%s", vuln.ID),
-				Severity:           r.Severity,
-				NormalizedSeverity: NormalizeSeverity(r.Severity),
-				FixedInVersion:     r.RecommendedVersion,
+				Description:        fmt.Sprintf("%s(cvss: %s)(cves: %s)\n%s", vuln.Title, vuln.CVSS, strings.Join(vuln.CVES, ","), r.Message),
+				Links:              vuln.URL,
+				Severity:           vuln.Severity,
+				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
+				FixedInVersion:     strings.Join(vuln.FixedIn, ","),
 				Package:            r.record.Package,
 			})
 			log.Debug().
