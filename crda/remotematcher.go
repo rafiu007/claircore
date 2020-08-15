@@ -111,9 +111,10 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 
 	inC := make(chan *claircore.IndexRecord, concurrencyLimit)
 	ctrlC := make(chan []claircore.Vulnerability, concurrencyLimit)
-	errorC := make(chan error)
+	errorC := make(chan error, 1)
 	go func() {
 		defer close(ctrlC)
+		defer close(errorC)
 		var g errgroup.Group
 		for _, record := range records {
 			g.Go(func() error {
@@ -142,6 +143,12 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 				Str("id", vuln.ID).
 				Msg("vulns")
 		}
+	}
+	select {
+	case err := <-errorC:
+		// log error and move on
+		log.Error().Err(err).Msg("failure")
+	default:
 	}
 	log.Debug().
 		Int("vulnerabilities", len(results)).
