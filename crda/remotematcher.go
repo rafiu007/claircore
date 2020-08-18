@@ -14,9 +14,13 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/quay/claircore"
+	"github.com/quay/claircore/libvuln/driver"
 )
 
 var (
+	_ driver.Matcher       = (*Matcher)(nil)
+	_ driver.RemoteMatcher = (*Matcher)(nil)
+
 	urlTemplate = url.URL{
 		Scheme: "https",
 		// TODO: Host must be configurable
@@ -29,6 +33,10 @@ var (
 
 // Bounded concurrency limit.
 const concurrencyLimit = 10
+
+// Matcher attempts to correlate discovered python packages with reported
+// vulnerabilities.
+type Matcher struct{}
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
 // delivers Snyk sourced Vulnerability information.
@@ -52,55 +60,27 @@ type VulnReport struct {
 	Analyses           Analyses `json:"component_analyses"`
 }
 
-func componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
-	reqUrl := urlTemplate
-	reqUrl.Path = fmt.Sprintf(reqUrl.Path, record.Package.Name, record.Package.Version)
-	req := http.Request{
-		Method:     http.MethodGet,
-		Header:     http.Header{"User-Agent": {"claircore/crda/RemoteMatcher"}},
-		URL:        &reqUrl,
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Host:       reqUrl.Host,
-	}
-	// Per request shouldn't go beyound 10s.
-	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	// Fixme: Use configurable http client.
-	res, err := http.DefaultClient.Do(req.WithContext(tctx))
-	if res != nil {
-		defer res.Body.Close()
-	}
-	if err != nil {
-		return nil, err
-	} else {
-		var vulnReport VulnReport
-		data, _ := ioutil.ReadAll(res.Body)
-		err = json.Unmarshal(data, &vulnReport)
-		if err != nil {
-			return nil, err
-		}
-		// A package can have multiple vulnerability for a version.
-		var vulns []claircore.Vulnerability
-		for _, vuln := range vulnReport.Analyses.Vulnerabilities {
-			vulns = append(vulns, claircore.Vulnerability{
-				ID:                 vuln.ID,
-				Updater:            "CodeReadyAnalytics",
-				Name:               vuln.ID,
-				Description:        fmt.Sprintf("%s(cvss: %s)(cves: %s)\n%s", vuln.Title, vuln.CVSS, strings.Join(vuln.CVES, ","), vulnReport.Message),
-				Links:              vuln.URL,
-				Severity:           vuln.Severity,
-				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
-				FixedInVersion:     strings.Join(vuln.FixedIn, ","),
-				Package:            record.Package,
-			})
-		}
-		return vulns, nil
-	}
+// Name implements driver.Matcher.
+func (*Matcher) Name() string { return "crda" }
+
+// Filter implements driver.Matcher.
+func (*Matcher) Filter(record *claircore.IndexRecord) bool {
+	return record.Package.NormalizedVersion.Kind == "pep440"
 }
 
-func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
+// Query implements driver.Matcher.
+func (*Matcher) Query() []driver.MatchConstraint {
+	panic("unreachable")
+}
+
+// Vulnerable implements driver.Matcher.
+func (*Matcher) Vulnerable(ctx context.Context, record *claircore.IndexRecord, vuln *claircore.Vulnerability) (bool, error) {
+	// RemoteMatcher can match Package and Vulnerability.
+	panic("unreachable")
+}
+
+// QueryRemoteMatcher implements driver.RemoteMatcher.
+func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "crda/remotematcher/QueryRemoteMatcher").
 		Logger()
@@ -154,4 +134,51 @@ func QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (
 		Int("vulnerabilities", len(results)).
 		Msg("query")
 	return results, nil
+}
+func componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
+	reqUrl := urlTemplate
+	reqUrl.Path = fmt.Sprintf(reqUrl.Path, record.Package.Name, record.Package.Version)
+	req := http.Request{
+		Method:     http.MethodGet,
+		Header:     http.Header{"User-Agent": {"claircore/crda/RemoteMatcher"}},
+		URL:        &reqUrl,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Host:       reqUrl.Host,
+	}
+	// Per request shouldn't go beyound 10s.
+	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	// Fixme: Use configurable http client.
+	res, err := http.DefaultClient.Do(req.WithContext(tctx))
+	if res != nil {
+		defer res.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	} else {
+		var vulnReport VulnReport
+		data, _ := ioutil.ReadAll(res.Body)
+		err = json.Unmarshal(data, &vulnReport)
+		if err != nil {
+			return nil, err
+		}
+		// A package can have multiple vulnerability for a version.
+		var vulns []claircore.Vulnerability
+		for _, vuln := range vulnReport.Analyses.Vulnerabilities {
+			vulns = append(vulns, claircore.Vulnerability{
+				ID:                 vuln.ID,
+				Updater:            "CodeReadyAnalytics",
+				Name:               vuln.ID,
+				Description:        fmt.Sprintf("%s(cvss: %s)(cves: %s)\n%s", vuln.Title, vuln.CVSS, strings.Join(vuln.CVES, ","), vulnReport.Message),
+				Links:              vuln.URL,
+				Severity:           vuln.Severity,
+				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
+				FixedInVersion:     strings.Join(vuln.FixedIn, ","),
+				Package:            record.Package,
+			})
+		}
+		return vulns, nil
+	}
 }
