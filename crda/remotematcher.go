@@ -25,16 +25,14 @@ var (
 const (
 	// Bounded concurrency limit.
 	concurrencyLimit = 10
-	defaultHost      = "f8a-analytics-preview-2445582058137.production.gw.apicast.io"
-	defaultUserKey   = "3e42fa66f65124e6b1266a23431e3d08"
+	defaultURL       = "https://f8a-analytics-preview-2445582058137.production.gw.apicast.io/?user_key=3e42fa66f65124e6b1266a23431e3d08"
 )
 
 // Matcher attempts to correlate discovered python packages with reported
 // vulnerabilities.
 type Matcher struct {
-	client  *http.Client
-	host    string
-	userKey string
+	client *http.Client
+	url    *url.URL
 }
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
@@ -71,14 +69,15 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 		}
 	}
 
-	if m.host == "" {
-		m.host = defaultHost
+	if m.url == nil {
+		var err error
+		m.url, err = url.Parse(defaultURL)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if m.client == nil {
 		m.client = http.DefaultClient
-	}
-	if m.userKey == "" {
-		m.userKey = defaultUserKey
 	}
 
 	return &m, nil
@@ -88,8 +87,8 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 //
 // If not passed to NewMatcher, http.DefaultClient will be used.
 func WithClient(c *http.Client) Option {
-	return func(u *Matcher) error {
-		u.client = c
+	return func(m *Matcher) error {
+		m.client = c
 		return nil
 	}
 }
@@ -97,19 +96,13 @@ func WithClient(c *http.Client) Option {
 // WithHost sets the server host name that the matcher should use for requests.
 //
 // If not passed to NewMatcher, defaultHost will be used.
-func WithHost(host string) Option {
-	return func(u *Matcher) error {
-		u.host = host
-		return nil
-	}
-}
-
-// WithUserKey sets the user key that the matcher should use for requests.
-//
-// If not passed to NewMatcher, defaultUserKey will be used.
-func WithUserKey(userKey string) Option {
-	return func(u *Matcher) error {
-		u.userKey = userKey
+func WithURL(uri string) Option {
+	u, err := url.Parse(uri)
+	return func(m *Matcher) error {
+		if err != nil {
+			return err
+		}
+		m.url = u
 		return nil
 	}
 }
@@ -198,10 +191,10 @@ func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore
 
 func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
 	reqUrl := url.URL{
-		Scheme:   "https",
-		Host:     m.host,
+		Scheme:   m.url.Scheme,
+		Host:     m.url.Host,
 		Path:     fmt.Sprintf("/api/v2/component-analyses/pypi/%s/%s", record.Package.Name, record.Package.Version),
-		RawQuery: fmt.Sprintf("user_key=%s", m.userKey),
+		RawQuery: m.url.RawQuery,
 	}
 
 	req := http.Request{
@@ -216,8 +209,7 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 	// A request shouldn't go beyound 10s.
 	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	// Fixme: Use configurable http client.
-	res, err := http.DefaultClient.Do(req.WithContext(tctx))
+	res, err := m.client.Do(req.WithContext(tctx))
 	if res != nil {
 		defer res.Body.Close()
 	}
