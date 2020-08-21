@@ -20,23 +20,22 @@ import (
 var (
 	_ driver.Matcher       = (*Matcher)(nil)
 	_ driver.RemoteMatcher = (*Matcher)(nil)
-
-	urlTemplate = url.URL{
-		Scheme: "https",
-		// TODO: Host must be configurable
-		Host: "f8a-analytics-preview-2445582058137.production.gw.apicast.io",
-		Path: "/api/v2/component-analyses/pypi/%s/%s",
-		// TODO: Userkey must be configurable
-		RawQuery: "user_key=3e42fa66f65124e6b1266a23431e3d08",
-	}
 )
 
-// Bounded concurrency limit.
-const concurrencyLimit = 10
+const (
+	// Bounded concurrency limit.
+	concurrencyLimit = 10
+	defaultHost      = "f8a-analytics-preview-2445582058137.production.gw.apicast.io"
+	defaultUserKey   = "3e42fa66f65124e6b1266a23431e3d08"
+)
 
 // Matcher attempts to correlate discovered python packages with reported
 // vulnerabilities.
-type Matcher struct{}
+type Matcher struct {
+	client  *http.Client
+	host    string
+	userKey string
+}
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
 // delivers Snyk sourced Vulnerability information.
@@ -60,6 +59,61 @@ type VulnReport struct {
 	Analyses           Analyses `json:"component_analyses"`
 }
 
+// Option controls the configuration of a Matcher.
+type Option func(*Matcher) error
+
+// NewMatcher returns a configured Matcher or reports an error.
+func NewMatcher(opt ...Option) (*Matcher, error) {
+	m := Matcher{}
+	for _, f := range opt {
+		if err := f(&m); err != nil {
+			return nil, err
+		}
+	}
+
+	if m.host == "" {
+		m.host = defaultHost
+	}
+	if m.client == nil {
+		m.client = http.DefaultClient
+	}
+	if m.userKey == "" {
+		m.userKey = defaultUserKey
+	}
+
+	return &m, nil
+}
+
+// WithClient sets the http.Client that the matcher should use for requests.
+//
+// If not passed to NewMatcher, http.DefaultClient will be used.
+func WithClient(c *http.Client) Option {
+	return func(u *Matcher) error {
+		u.client = c
+		return nil
+	}
+}
+
+// WithHost sets the server host name that the matcher should use for requests.
+//
+// If not passed to NewMatcher, defaultHost will be used.
+func WithHost(host string) Option {
+	return func(u *Matcher) error {
+		u.host = host
+		return nil
+	}
+}
+
+// WithUserKey sets the user key that the matcher should use for requests.
+//
+// If not passed to NewMatcher, defaultUserKey will be used.
+func WithUserKey(userKey string) Option {
+	return func(u *Matcher) error {
+		u.userKey = userKey
+		return nil
+	}
+}
+
 // Name implements driver.Matcher.
 func (*Matcher) Name() string { return "crda" }
 
@@ -80,7 +134,7 @@ func (*Matcher) Vulnerable(ctx context.Context, record *claircore.IndexRecord, v
 }
 
 // QueryRemoteMatcher implements driver.RemoteMatcher.
-func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
+func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error) {
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "crda/remotematcher/QueryRemoteMatcher").
 		Logger()
@@ -89,6 +143,33 @@ func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.Ind
 		Int("records", len(records)).
 		Msg("packages")
 
+	ctrlC, errorC := m.fetchVulnerabilities(ctx, records)
+	results := make(map[string][]*claircore.Vulnerability)
+	for r := range ctrlC {
+		for _, vuln := range r {
+			results[vuln.Package.ID] = append(results[vuln.Package.ID], &vuln)
+			log.Debug().
+				Str("package", vuln.Package.Name).
+				Str("version", vuln.Package.Version).
+				Str("id", vuln.ID).
+				Msg("vulns")
+		}
+	}
+	select {
+	case err, ok := <-errorC:
+		// Don't propagate error, log and move on.
+		if ok {
+			log.Error().Err(err).Msg("access to component analyses failed")
+		}
+	default:
+	}
+	log.Debug().
+		Int("vulnerabilities", len(results)).
+		Msg("query")
+	return results, nil
+}
+
+func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (chan []claircore.Vulnerability, chan error) {
 	inC := make(chan *claircore.IndexRecord, concurrencyLimit)
 	ctrlC := make(chan []claircore.Vulnerability, concurrencyLimit)
 	errorC := make(chan error, 1)
@@ -98,7 +179,7 @@ func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.Ind
 		var g errgroup.Group
 		for _, record := range records {
 			g.Go(func() error {
-				vulns, err := componentAnalyses(ctx, <-inC)
+				vulns, err := m.componentAnalyses(ctx, <-inC)
 				if err != nil {
 					return err
 				}
@@ -112,32 +193,17 @@ func (*Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.Ind
 			errorC <- err
 		}
 	}()
-
-	results := make(map[string][]*claircore.Vulnerability)
-	for r := range ctrlC {
-		for _, vuln := range r {
-			results[vuln.Package.ID] = append(results[vuln.Package.ID], &vuln)
-			log.Debug().
-				Str("package", vuln.Package.Name).
-				Str("version", vuln.Package.Version).
-				Str("id", vuln.ID).
-				Msg("vulns")
-		}
-	}
-	select {
-	case err := <-errorC:
-		// log error and move on
-		log.Error().Err(err).Msg("failure")
-	default:
-	}
-	log.Debug().
-		Int("vulnerabilities", len(results)).
-		Msg("query")
-	return results, nil
+	return ctrlC, errorC
 }
-func componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
-	reqUrl := urlTemplate
-	reqUrl.Path = fmt.Sprintf(reqUrl.Path, record.Package.Name, record.Package.Version)
+
+func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
+	reqUrl := url.URL{
+		Scheme:   "https",
+		Host:     m.host,
+		Path:     fmt.Sprintf("/api/v2/component-analyses/pypi/%s/%s", record.Package.Name, record.Package.Version),
+		RawQuery: fmt.Sprintf("user_key=%s", m.userKey),
+	}
+
 	req := http.Request{
 		Method:     http.MethodGet,
 		Header:     http.Header{"User-Agent": {"claircore/crda/RemoteMatcher"}},
@@ -147,7 +213,7 @@ func componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]cl
 		ProtoMinor: 1,
 		Host:       reqUrl.Host,
 	}
-	// Per request shouldn't go beyound 10s.
+	// A request shouldn't go beyound 10s.
 	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	// Fixme: Use configurable http client.
@@ -164,7 +230,7 @@ func componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]cl
 		if err != nil {
 			return nil, err
 		}
-		// A package can have multiple vulnerability for a version.
+		// A package can have 0 or more vulnerabilities for a version.
 		var vulns []claircore.Vulnerability
 		for _, vuln := range vulnReport.Analyses.Vulnerabilities {
 			vulns = append(vulns, claircore.Vulnerability{
