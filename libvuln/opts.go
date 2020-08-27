@@ -140,6 +140,7 @@ func (o *Opts) parse(ctx context.Context) error {
 
 	if m, err := crda.NewMatcher(); err == nil {
 		o.Matchers = append(o.Matchers, m)
+	}
 
 	if o.Client == nil {
 		o.Client = http.DefaultClient
