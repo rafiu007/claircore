@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/indexer"
@@ -27,9 +29,11 @@ type Libindex struct {
 	db *sqlx.DB
 	// a Store which will be shared between scanner instances
 	store indexer.Store
-	// a sharable http client
+	// a shareable http client
 	client *http.Client
-	state  string
+	// an opaque and unique string representing the configured
+	// state of the indexer. see setState for more information.
+	state string
 }
 
 // New creates a new instance of libindex
@@ -38,7 +42,7 @@ func New(ctx context.Context, opts *Opts) (*Libindex, error) {
 		Str("component", "libindex/New").
 		Logger()
 	ctx = log.WithContext(ctx)
-	err := opts.Parse()
+	err := opts.Parse(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse opts: %v", err)
 	}
@@ -57,32 +61,23 @@ func New(ctx context.Context, opts *Opts) (*Libindex, error) {
 	}
 
 	// register any new scanners.
-	pscnrs, dscnrs, rscnrs, err := indexer.EcosystemsToScanners(ctx, opts.Ecosystems)
-	vscnrs := indexer.MergeVS(pscnrs, dscnrs, rscnrs)
-
-	h := md5.New()
-	var ns []string
-	m := make(map[string][]byte)
-	for _, s := range vscnrs {
-		n := s.Name()
-		m[n] = []byte(n + s.Version() + s.Kind() + "\n")
-		ns = append(ns, n)
-	}
-	if _, err := io.WriteString(h, versionMagic); err != nil {
+	pscnrs, dscnrs, rscnrs, err := indexer.EcosystemsToScanners(ctx, opts.Ecosystems, opts.Airgap)
+	if err != nil {
 		return nil, err
 	}
-	sort.Strings(ns)
-	for _, n := range ns {
-		if _, err := h.Write(m[n]); err != nil {
-			return nil, err
-		}
-	}
-	l.state = hex.EncodeToString(h.Sum(nil))
+	vscnrs := indexer.MergeVS(pscnrs, dscnrs, rscnrs)
 
 	err = l.store.RegisterScanners(ctx, vscnrs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register configured scanners: %v", err)
 	}
+
+	// set the indexer's state
+	err = l.setState(ctx, vscnrs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set the indexer state: %v", err)
+	}
+
 	log.Info().Msg("registered configured scanners")
 	l.Opts.vscnrs = vscnrs
 	return l, nil
@@ -106,7 +101,7 @@ func (l *Libindex) Index(ctx context.Context, manifest *claircore.Manifest) (*cl
 	ctx = log.WithContext(ctx)
 	log.Info().Msg("index request start")
 	defer log.Info().Msg("index request done")
-	c, err := l.ControllerFactory(l, l.Opts)
+	c, err := l.ControllerFactory(ctx, l, l.Opts)
 	if err != nil {
 		return nil, fmt.Errorf("scanner factory failed to construct a scanner: %v", err)
 	}
@@ -121,6 +116,37 @@ func (l *Libindex) Index(ctx context.Context, manifest *claircore.Manifest) (*cl
 // re-indexed.
 func (l *Libindex) State(ctx context.Context) (string, error) {
 	return l.state, nil
+}
+
+// setState creates a unique and opaque identifier representing the indexer's
+// configuration state.
+//
+// Indexers running different scanner versions will produce different state strings.
+// Thus this state value can be used as a cue for clients to re-index their manifests
+// and obtain a new IndexReport.
+func (l *Libindex) setState(ctx context.Context, vscnrs indexer.VersionedScanners) error {
+	h := md5.New()
+	var ns []string
+	m := make(map[string][]byte)
+	for _, s := range vscnrs {
+		n := s.Name()
+		m[n] = []byte(n + s.Version() + s.Kind() + "\n")
+		// TODO(hank) Should this take into account configuration? E.g. If a
+		// scanner implements the configurable interface, should we expect that
+		// we can serialize the scanner's concrete type?
+		ns = append(ns, n)
+	}
+	if _, err := io.WriteString(h, versionMagic); err != nil {
+		return err
+	}
+	sort.Strings(ns)
+	for _, n := range ns {
+		if _, err := h.Write(m[n]); err != nil {
+			return err
+		}
+	}
+	l.state = hex.EncodeToString(h.Sum(nil))
+	return nil
 }
 
 func (l *Libindex) index(ctx context.Context, s *controller.Controller, m *claircore.Manifest) *claircore.IndexReport {
@@ -157,4 +183,54 @@ func (l *Libindex) index(ctx context.Context, s *controller.Controller, m *clair
 func (l *Libindex) IndexReport(ctx context.Context, hash claircore.Digest) (*claircore.IndexReport, bool, error) {
 	res, ok, err := l.store.IndexReport(ctx, hash)
 	return res, ok, err
+}
+
+// AffectedManifests retrieves a list of affected manifests when provided a list of vulnerabilities.
+func (l *Libindex) AffectedManifests(ctx context.Context, vulns []claircore.Vulnerability) (claircore.AffectedManifests, error) {
+	const (
+		maxGroupSize = 100
+	)
+	log := zerolog.Ctx(ctx).With().
+		Str("component", "libindex/Libindex.AffectedManifests").
+		Logger()
+
+	groupSize := int(math.Sqrt(float64(len(vulns))))
+	if groupSize > maxGroupSize {
+		groupSize = maxGroupSize
+	}
+
+	affected := claircore.NewAffectedManifests()
+	for i := 0; i < len(vulns); i += groupSize {
+		errGrp, eCTX := errgroup.WithContext(ctx)
+
+		start := i
+		end := i + groupSize
+		if end > len(vulns) {
+			end = len(vulns)
+		}
+
+		for n := start; n < end; n++ {
+			nn := n
+			do := func() error {
+				log.Debug().Str("id", vulns[nn].ID).Msg("evaluting vulnerability")
+				if eCTX.Err() != nil {
+					return eCTX.Err()
+				}
+				hashes, err := l.store.AffectedManifests(eCTX, vulns[nn])
+				if err != nil {
+					return err
+				}
+				affected.Add(&vulns[nn], hashes...)
+				return nil
+			}
+			errGrp.Go(do)
+		}
+
+		err := errGrp.Wait()
+		if err != nil {
+			return affected, fmt.Errorf("received error retreiving affected manifests: %v", err)
+		}
+	}
+	affected.Sort()
+	return affected, nil
 }

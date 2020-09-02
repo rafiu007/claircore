@@ -2,57 +2,51 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
-	"github.com/jmoiron/sqlx"
-
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/indexer"
 )
 
-const (
-	selectScannerID = `SELECT id FROM scanner WHERE name = $1 AND version = $2;`
-	// artifacts for a layer are always persisted via a transaction thus finding a single
-	// artifact matching the name, version, and layer hash will signify a layer
-	// has been scanned by the scanner in question.
-	selectPackageScanArtifact      = `SELECT layer_hash FROM package_scanartifact WHERE layer_hash = $1 AND scanner_id = $2 LIMIT 1;`
-	selectDistributionScanArtifact = `SELECT layer_hash FROM dist_scanartifact WHERE layer_hash = $1 AND scanner_id = $2 LIMIT 1;`
-	selectRepositoryScanArtifact   = `SELECT layer_hash FROM repo_scanartifact WHERE layer_hash = $1 AND scanner_id = $2 LIMIT 1;`
-)
+func layerScanned(ctx context.Context, pool *pgxpool.Pool, hash claircore.Digest, scnr indexer.VersionedScanner) (bool, error) {
+	const (
+		selectScanner = `
+			SELECT id
+			FROM scanner
+			WHERE name = $1
+			  AND version = $2
+			  AND kind = $3;
+			`
+		selectScanned = `
+			SELECT layer_hash
+			FROM scanned_layer
+			WHERE layer_hash = $1
+			  AND scanner_id = $2
+			`
+	)
 
-func layerScanned(ctx context.Context, db *sqlx.DB, hash claircore.Digest, scnr indexer.VersionedScanner) (bool, error) {
-	// TODO Use passed-in Context.
 	var scannerID int64
-	err := db.Get(&scannerID, selectScannerID, scnr.Name(), scnr.Version())
+	row := pool.QueryRow(ctx, selectScanner, scnr.Name(), scnr.Version(), scnr.Kind())
+	err := row.Scan(&scannerID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// TODO: make error type to handle this case
-			return false, fmt.Errorf("scanner name and version not found in store")
+		if err == pgx.ErrNoRows {
+			return false, fmt.Errorf("scanner name and version not found in store: %+v", scnr)
 		}
 		return false, err
 	}
 
-	var layerHash claircore.Digest
-	var query string
-	switch scnr.Kind() {
-	case "package":
-		query = selectPackageScanArtifact
-	case "distribution":
-		query = selectDistributionScanArtifact
-	case "repository":
-		query = selectRepositoryScanArtifact
-	default:
-		return false, fmt.Errorf("received unkown scanner type: %v %v %v", scnr.Name(), scnr.Version(), scnr.Kind())
-	}
-
-	err = db.Get(&layerHash, query, hash, scannerID)
+	var layerHash string
+	row = pool.QueryRow(ctx, selectScanned, hash.String(), scannerID)
+	err = row.Scan(&layerHash)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to select scanartifact with layer hash: %v", err)
+		return false, err
 	}
 
 	return true, nil
+
 }

@@ -14,6 +14,7 @@ import (
 var cleanup sync.WaitGroup
 
 type commonConfig struct {
+	cleanup *sync.WaitGroup
 }
 
 type subcmd func(context.Context, *commonConfig, []string) error
@@ -33,7 +34,9 @@ func main() {
 		done()
 	}()
 
-	var cfg commonConfig
+	var cfg commonConfig = commonConfig{
+		cleanup: &cleanup,
+	}
 	fs := flag.NewFlagSet("main", flag.ExitOnError)
 	fs.Usage = func() {
 		out := fs.Output()
@@ -44,6 +47,12 @@ func main() {
 		fmt.Fprintln(out, "\tgenerate reports for containers provided as arguments or on stdin")
 		fmt.Fprintln(out, "manifest")
 		fmt.Fprintln(out, "\tgenerate manifests for containers provided as arguments or on stdin")
+		fmt.Fprintln(out, "unpack")
+		fmt.Fprintln(out, "\textracts each container's layers content for inspection")
+		fmt.Fprintln(out, "run-updaters")
+		fmt.Fprintln(out, "\trun default updaters and produce an artifact for later importing")
+		fmt.Fprintln(out, "load-updates")
+		fmt.Fprintln(out, "\tload an artifact from `run-updaters` into a database")
 		fmt.Fprintln(out)
 	}
 
@@ -57,6 +66,12 @@ func main() {
 		cmd = Report
 	case "manifest":
 		cmd = Manifest
+	case "unpack":
+		cmd = Unpack
+	case "run-updaters":
+		cmd = RunUpdaters
+	case "load-updates":
+		cmd = LoadUpdates
 	case "":
 		fs.Usage()
 		os.Exit(99)

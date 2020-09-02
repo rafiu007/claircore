@@ -1,8 +1,19 @@
 version: "3.7"
+
+# if you are using firewalld add this consistent bridge name
+# to your trusted zone
+# sudo firewall-cmd --zone=trusted --add-interface=claircore --permanent
+# sudo firewall-cmd --reload
+networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.name: claircore
+
 services:
 
   claircore-db:
     image: postgres:11.5
+    container_name: claircore-db
     environment:
       POSTGRES_USER: "claircore"
       POSTGRES_DB: "claircore"
@@ -17,6 +28,7 @@ services:
 
   libindexhttp:
     image: quay.io/claircore/golang:1.13.3
+    container_name: libindexhttp
     ports:
       - "8080:8080"
     environment:
@@ -32,6 +44,7 @@ services:
 
   libvulnhttp:
     image: quay.io/claircore/golang:1.13.3
+    container_name: libvulnhttp
     ports:
       - "8081:8081"
     environment:

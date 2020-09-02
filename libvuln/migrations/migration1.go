@@ -49,11 +49,14 @@ const (
 		updater                TEXT,
 		name                   TEXT,
 		description            TEXT,
+		issued                 timestamptz,
 		links                  TEXT,
 		severity               TEXT,
 		normalized_severity    TEXT,
 		package_name           TEXT,
 		package_version        TEXT,
+		package_module         TEXT,
+		package_arch           TEXT,
 		package_kind           TEXT,
 		dist_id                TEXT,
 		dist_name              TEXT,
@@ -67,31 +70,20 @@ const (
 		repo_key               TEXT,
 		repo_uri               TEXT,
 		fixed_in_version       TEXT,
+		arch_operation         TEXT,
 		vulnerable_range       VersionRange NOT NULL DEFAULT VersionRange('{}', '{}', '()'),
 		version_kind           TEXT,
 		UNIQUE (hash_kind, hash)
 	);
-	-- These are some guesses at useful indexes. These should be measured.
-	CREATE INDEX IF NOT EXISTS vuln_package_idx on vuln (
-		package_name,
-		package_kind,
-		package_version
-	);
-	CREATE INDEX IF NOT EXISTS vuln_dist_idx on vuln (
-		dist_id,
-		dist_name,
-		dist_version,
-		dist_version_code_name,
-		dist_version_id,
-		dist_arch,
-		dist_cpe,
-		dist_pretty_name
-	);
-	CREATE INDEX IF NOT EXISTS vuln_repo_idx on vuln (
-		repo_name,
-		repo_key,
-		repo_uri
-	);
+	-- this index is tuned for the application. if you change this measure pre and post
+	-- change query speeds when generating vulnerability reports.
+	CREATE INDEX vuln_lookup_idx on vuln (package_name, dist_id,
+                                          dist_name, dist_pretty_name,
+                                          dist_version, dist_version_id,
+                                          package_module, dist_version_code_name,
+                                          repo_name, dist_arch,
+                                          dist_cpe, repo_key,
+                                          repo_uri);
 	-- Uo_vuln is the association table that does the many-many association
 	-- between update operations and vulnerabilities.
 	--

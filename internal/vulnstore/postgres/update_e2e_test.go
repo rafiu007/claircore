@@ -11,7 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/vulnstore"
@@ -24,9 +24,9 @@ import (
 // TestE2E performs an end to end test of update operations and diffing
 func TestE2E(t *testing.T) {
 	integration.Skip(t)
-	ctx, done := context.WithCancel(context.Background())
+	ctx := context.Background()
+	ctx, done := log.TestLogger(ctx, t)
 	defer done()
-	ctx = log.TestLogger(ctx, t)
 
 	cases := []e2e{
 		{
@@ -57,8 +57,8 @@ type e2e struct {
 	// tests.
 	bail      func()
 	updater   string
-	db        *sqlx.DB
 	s         vulnstore.Store
+	pool      *pgxpool.Pool
 	updateOps []driver.UpdateOperation
 }
 
@@ -70,9 +70,9 @@ func (e *e2e) Run(ctx context.Context) func(*testing.T) {
 	binary.Write(h, binary.BigEndian, e.Updates)
 	e.updater = strconv.FormatUint(h.Sum64(), 36)
 	return func(t *testing.T) {
-		db, store, teardown := TestStore(ctx, t)
-		e.s = store
-		e.db = db
+		pool, teardown := TestDB(ctx, t)
+		e.pool = pool
+		e.s = NewVulnStore(pool)
 		defer teardown()
 		t.Run("Update", e.Update(ctx))
 		t.Run("GetUpdateOperations", e.GetUpdateOperations(ctx))
@@ -127,7 +127,7 @@ func (e *e2e) Update(ctx context.Context) func(*testing.T) {
 				Updater:     e.updater,
 			})
 
-			checkInsertedVulns(ctx, t, e.db, ref, vs)
+			checkInsertedVulns(ctx, t, e.pool, ref, vs)
 		}
 		t.Log("ok")
 	}
@@ -204,11 +204,11 @@ func (e *e2e) Diff(ctx context.Context) func(t *testing.T) {
 			}
 
 			// make sure update operations match generated test values
-			if prev != diff.A.Ref {
-				t.Errorf("want: %v, got: %v", diff.A.Ref, prev)
+			if prev != diff.Prev.Ref {
+				t.Errorf("want: %v, got: %v", diff.Prev.Ref, prev)
 			}
-			if cur != diff.B.Ref {
-				t.Errorf("want: %v, got: %v", diff.B.Ref, cur)
+			if cur != diff.Cur.Ref {
+				t.Errorf("want: %v, got: %v", diff.Cur.Ref, cur)
 			}
 
 			// confirm removed and add vulnerabilities are the ones we expect
@@ -270,7 +270,7 @@ func (e *e2e) DeleteUpdateOperations(ctx context.Context) func(*testing.T) {
 			}
 
 			// Check that the update_operation is removed from the table.
-			if err := e.db.QueryRowContext(ctx, opExists, op.Ref).Scan(&exists); err != nil {
+			if err := e.pool.QueryRow(ctx, opExists, op.Ref).Scan(&exists); err != nil {
 				t.Errorf("query failed: %v", err)
 			}
 			t.Logf("operation %v exists: %v", op.Ref, exists)
@@ -279,7 +279,7 @@ func (e *e2e) DeleteUpdateOperations(ctx context.Context) func(*testing.T) {
 			}
 
 			// This really shouldn't happen because of the foreign constraint.
-			if err := e.db.QueryRowContext(ctx, assocExists, op.Ref).Scan(&exists); err != nil {
+			if err := e.pool.QueryRow(ctx, assocExists, op.Ref).Scan(&exists); err != nil {
 				t.Errorf("query failed: %v", err)
 			}
 			t.Logf("operation %v exists: %v", op.Ref, exists)
@@ -292,8 +292,8 @@ func (e *e2e) DeleteUpdateOperations(ctx context.Context) func(*testing.T) {
 }
 
 // checkInsertedVulns confirms vulnerabilitiles are inserted into the database correctly when
-// store.UpdateVulnerabilities is calld.
-func checkInsertedVulns(ctx context.Context, t *testing.T, db *sqlx.DB, id uuid.UUID, vulns []*claircore.Vulnerability) {
+// store.UpdateVulnerabilities is called.
+func checkInsertedVulns(ctx context.Context, t *testing.T, pool *pgxpool.Pool, id uuid.UUID, vulns []*claircore.Vulnerability) {
 	const query = `SELECT
 	vuln.hash_kind,
 	vuln.hash,
@@ -301,11 +301,14 @@ func checkInsertedVulns(ctx context.Context, t *testing.T, db *sqlx.DB, id uuid.
 	vuln.id,
 	vuln.name,
 	vuln.description,
+	vuln.issued,
 	vuln.links,
 	vuln.normalized_severity,
 	vuln.severity,
 	vuln.package_name,
 	vuln.package_version,
+	vuln.package_module,
+	vuln.package_arch,
 	vuln.package_kind,
 	vuln.dist_id,
 	vuln.dist_name,
@@ -315,6 +318,7 @@ func checkInsertedVulns(ctx context.Context, t *testing.T, db *sqlx.DB, id uuid.
 	vuln.dist_arch,
 	vuln.dist_cpe,
 	vuln.dist_pretty_name,
+	vuln.arch_operation,
 	vuln.repo_name,
 	vuln.repo_key,
 	vuln.repo_uri,
@@ -327,7 +331,7 @@ WHERE uo.ref = $1::uuid;`
 	for _, vuln := range vulns {
 		expectedVulns[vuln.Name] = vuln
 	}
-	rows, err := db.QueryContext(ctx, query, id)
+	rows, err := pool.Query(ctx, query, id)
 	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
@@ -335,6 +339,7 @@ WHERE uo.ref = $1::uuid;`
 
 	queriedVulns := map[string]*claircore.Vulnerability{}
 	for rows.Next() {
+		var id int64
 		var hashKind string
 		var hash []byte
 		vuln := claircore.Vulnerability{
@@ -346,14 +351,17 @@ WHERE uo.ref = $1::uuid;`
 			&hashKind,
 			&hash,
 			&vuln.Updater,
-			&vuln.ID,
+			&id,
 			&vuln.Name,
 			&vuln.Description,
+			&vuln.Issued,
 			&vuln.Links,
 			&vuln.NormalizedSeverity,
 			&vuln.Severity,
 			&vuln.Package.Name,
 			&vuln.Package.Version,
+			&vuln.Package.Module,
+			&vuln.Package.Arch,
 			&vuln.Package.Kind,
 			&vuln.Dist.DID,
 			&vuln.Dist.Name,
@@ -363,11 +371,13 @@ WHERE uo.ref = $1::uuid;`
 			&vuln.Dist.Arch,
 			&vuln.Dist.CPE,
 			&vuln.Dist.PrettyName,
+			&vuln.ArchOperation,
 			&vuln.Repo.Name,
 			&vuln.Repo.Key,
 			&vuln.Repo.URI,
 			&vuln.FixedInVersion,
 		)
+		vuln.ID = strconv.FormatInt(id, 10)
 		if err != nil {
 			t.Fatalf("failed to scan vulnerability: %v", err)
 		}

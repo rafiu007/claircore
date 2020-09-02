@@ -24,13 +24,21 @@ func buildGetQuery(record *claircore.IndexRecord, opts *vulnstore.GetOpts) (stri
 	if record.Package.Name == "" {
 		return "", fmt.Errorf("IndexRecord must provide a Package.Name")
 	}
-	exps = append(exps, goqu.Ex{"package_name": record.Package.Name})
+	packageQuery := goqu.And(
+		goqu.Ex{"package_name": record.Package.Name},
+		goqu.Ex{"package_kind": record.Package.Kind},
+	)
+	exps = append(exps, packageQuery)
 
 	// If the package has a source, convert the first expression to an OR.
 	if record.Package.Source.Name != "" {
-		or := goqu.Or(
-			goqu.Ex{"package_name": record.Package.Name},
+		sourcePackageQuery := goqu.And(
 			goqu.Ex{"package_name": record.Package.Source.Name},
+			goqu.Ex{"package_kind": record.Package.Source.Kind},
+		)
+		or := goqu.Or(
+			packageQuery,
+			sourcePackageQuery,
 		)
 		exps[0] = or
 	}
@@ -43,6 +51,8 @@ func buildGetQuery(record *claircore.IndexRecord, opts *vulnstore.GetOpts) (stri
 		}
 		var ex goqu.Ex
 		switch m {
+		case driver.PackageModule:
+			ex = goqu.Ex{"package_module": record.Package.Module}
 		case driver.DistributionDID:
 			ex = goqu.Ex{"dist_id": record.Distribution.DID}
 		case driver.DistributionName:
@@ -59,6 +69,8 @@ func buildGetQuery(record *claircore.IndexRecord, opts *vulnstore.GetOpts) (stri
 			ex = goqu.Ex{"dist_cpe": record.Distribution.CPE}
 		case driver.DistributionArch:
 			ex = goqu.Ex{"dist_arch": record.Distribution.Arch}
+		case driver.RepositoryName:
+			ex = goqu.Ex{"repo_name": record.Repository.Name}
 		default:
 			return "", fmt.Errorf("was provided unknown matcher: %v", m)
 		}
@@ -87,11 +99,14 @@ func buildGetQuery(record *claircore.IndexRecord, opts *vulnstore.GetOpts) (stri
 		"id",
 		"name",
 		"description",
+		"issued",
 		"links",
 		"severity",
 		"normalized_severity",
 		"package_name",
 		"package_version",
+		"package_module",
+		"package_arch",
 		"package_kind",
 		"dist_id",
 		"dist_name",
@@ -101,6 +116,7 @@ func buildGetQuery(record *claircore.IndexRecord, opts *vulnstore.GetOpts) (stri
 		"dist_arch",
 		"dist_cpe",
 		"dist_pretty_name",
+		"arch_operation",
 		"repo_name",
 		"repo_key",
 		"repo_uri",

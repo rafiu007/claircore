@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 
@@ -134,7 +133,7 @@ func (u *Updater) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 		log.Debug().
 			Str("hint", string(hint)).
 			Msg("using hint")
-		req.Header.Set("If-Modified-Since", string(hint))
+		req.Header.Set("if-none-match", string(hint))
 	}
 
 	res, err := u.client.Do(req.WithContext(ctx))
@@ -169,7 +168,7 @@ func (u *Updater) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 	success := false
 	defer func() {
 		if !success {
-			log.Debug().Msg("unsuccessful, cleaing up tempfile")
+			log.Debug().Msg("unsuccessful, cleaning up tempfile")
 			if err := tf.Close(); err != nil {
 				log.Warn().Err(err).Msg("failed to close tempfile")
 			}
@@ -184,15 +183,14 @@ func (u *Updater) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 	}
 	log.Debug().Msg("decompressed and buffered database")
 
-	t := res.Header.Get("Last-Modified")
-	if t == "" {
-		t = time.Now().Format(http.TimeFormat)
+	if t := res.Header.Get("etag"); t != "" {
+		log.Debug().
+			Str("hint", t).
+			Msg("using new hint")
+		hint = driver.Fingerprint(t)
 	}
-	log.Debug().
-		Str("hint", t).
-		Msg("using new hint")
 	success = true
-	return tf, driver.Fingerprint(t), nil
+	return tf, hint, nil
 }
 
 // Parse implements driver.Updater.
@@ -224,7 +222,7 @@ func (u *Updater) Parse(ctx context.Context, r io.ReadCloser) ([]*claircore.Vuln
 		Int("count", len(db)).
 		Msg("found raw entries")
 
-	ret, err := db.Vulnerabilites(ctx, u.repo)
+	ret, err := db.Vulnerabilites(ctx, u.repo, u.Name())
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +252,7 @@ func init() {
 	}
 }
 
-func (db db) Vulnerabilites(ctx context.Context, repo *claircore.Repository) ([]*claircore.Vulnerability, error) {
+func (db db) Vulnerabilites(ctx context.Context, repo *claircore.Repository, updater string) ([]*claircore.Vulnerability, error) {
 	const opSet = `<>=!`
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "pyupio/db.Vulnerabilities").
@@ -268,8 +266,9 @@ func (db db) Vulnerabilites(ctx context.Context, repo *claircore.Repository) ([]
 			for _, spec := range e.Specs {
 				v := &claircore.Vulnerability{
 					Name:        e.ID,
+					Updater:     updater,
 					Description: e.Advisory,
-					Package:     &claircore.Package{Name: strings.ToLower(k)},
+					Package:     &claircore.Package{Name: strings.ToLower(k), Kind: claircore.BINARY},
 					Repo:        repo,
 					Range:       &claircore.Range{},
 				}

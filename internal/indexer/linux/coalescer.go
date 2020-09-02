@@ -45,6 +45,12 @@ func (c *Coalescer) Coalesce(ctx context.Context, artifacts []*indexer.LayerArti
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+
+	for _, a := range artifacts {
+		for _, repo := range a.Repos {
+			c.ir.Repositories[repo.ID] = repo
+		}
+	}
 	// In our coalescing logic if a Distribution is found in layer (n) all packages found
 	// in layers 0-(n) will be associated with this layer. This is a heuristic.
 	// Let's do a search for the first Distribution we find and use a variable
@@ -87,21 +93,18 @@ func (c *Coalescer) Coalesce(ctx context.Context, artifacts []*indexer.LayerArti
 					distID = currDist.ID
 				}
 				if _, ok := dbs[pkg.PackageDB]; !ok {
-					packages := map[string]*claircore.Package{pkg.ID: pkg}
-					environment := &claircore.Environment{
-						PackageDB:      pkg.PackageDB,
-						IntroducedIn:   layerArtifacts.Hash,
-						DistributionID: distID,
-					}
-					environments := map[string]*claircore.Environment{pkg.ID: environment}
+					packages := map[string]*claircore.Package{}
+					environments := map[string]*claircore.Environment{}
 					dbs[pkg.PackageDB] = &packageDatabase{packages, environments}
-					continue
 				}
 				if _, ok := dbs[pkg.PackageDB].packages[pkg.ID]; !ok {
 					environment := &claircore.Environment{
 						PackageDB:      pkg.PackageDB,
 						IntroducedIn:   layerArtifacts.Hash,
 						DistributionID: distID,
+					}
+					for _, repo := range layerArtifacts.Repos {
+						environment.RepositoryIDs = append(environment.RepositoryIDs, repo.ID)
 					}
 					dbs[pkg.PackageDB].packages[pkg.ID] = pkg
 					dbs[pkg.PackageDB].environments[pkg.ID] = environment
@@ -117,7 +120,7 @@ func (c *Coalescer) Coalesce(ctx context.Context, artifacts []*indexer.LayerArti
 	// that any changes to a package's database (dpkg, rpm, alpine, etc...) causes the entire database
 	// file to be written to the layer in which the change occurs. this assumption therefore
 	// allows for the following algorithm
-	// 1) walk layers backwards searching for newest modification of package dabatase.
+	// 1) walk layers backwards searching for newest modification of package database.
 	// 2) if we encounter a package existing in a particular database it means all packages within this package database are present.
 	//    record all packages found into a temporary map.
 	//    when we are finished searching the current layer add a key/value to the penultimate map indicating
@@ -136,13 +139,13 @@ func (c *Coalescer) Coalesce(ctx context.Context, artifacts []*indexer.LayerArti
 		for _, pkg := range layerArtifacts.Pkgs {
 			// have we already inventoried packages from this database ?
 			if _, ok := packagesToKeep[pkg.PackageDB]; !ok {
-				// ... we haven't so add to our temporary accumlator
+				// ... we haven't so add to our temporary accumulator
 				tk := tmpPackagesToKeep[pkg.PackageDB]
 				tmpPackagesToKeep[pkg.PackageDB] = append(tk, pkg.ID)
 			}
 		}
 		for k, v := range tmpPackagesToKeep {
-			// finished inventorying the layer, add our inventoried packges to our
+			// finished inventorying the layer, add our inventoried packages to our
 			// penultimate map ensuring next iteration will ignore packages from these databases
 			packagesToKeep[k] = v
 		}
