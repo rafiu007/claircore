@@ -12,6 +12,9 @@ import (
 // to fetch new vulnerabilities associated with the given IndexRecords.
 
 // The information retrieved from this interface won't be persisted into ClairCore database.
+type RemoteMatchers struct {
+	Params string `yaml:"params" json:"params"`
+}
 type RemoteMatcher interface {
 	QueryRemoteMatcher(ctx context.Context, records []*claircore.IndexRecord) (map[string][]*claircore.Vulnerability, error)
 }

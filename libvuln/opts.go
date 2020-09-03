@@ -93,6 +93,9 @@ type Opts struct {
 	// Client is an http.Client for use by all updaters. If unset,
 	// http.DefaultClient will be used.
 	Client *http.Client
+
+	//Contains configurabele details for the remote matcher
+	RemoteMatchers []driver.RemoteMatchers
 }
 
 // defaultMatchers is a variable containing
