@@ -13,6 +13,14 @@ import (
 
 // The information retrieved from this interface won't be persisted into ClairCore database.
 type RemoteMatchers struct {
+	// A remote service
+	RemoteMatchers []MatcherObject
+}
+type MatcherObject struct {
+	Name   string
+	Params MatcherParams
+}
+type MatcherParams struct {
 	Params string `yaml:"params" json:"params"`
 }
 type RemoteMatcher interface {
