@@ -95,7 +95,7 @@ type Opts struct {
 	Client *http.Client
 
 	//Contains configurabele details for the remote matcher
-	RemoteMatchers driver.RemoteMatchers
+	//RemoteMatcherParams string
 }
 
 // defaultMatchers is a variable containing
