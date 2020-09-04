@@ -85,6 +85,13 @@ const (
 	`
 )
 
+var (
+	zipSan = strings.NewReplacer(":", "-")
+	fm     = template.FuncMap{
+		"zipSan": func(s string) string { return zipSan.Replace(s) },
+	}
+)
+
 type reportConfig struct {
 	jqFilter          string
 	timeout           time.Duration
@@ -124,7 +131,7 @@ func Report(cmd context.Context, cfg *commonConfig, args []string) error {
 	if err != nil {
 		return err
 	}
-	cmdcfg.libindex, err = libindex.Parse("index")
+	cmdcfg.libindex, err = libindex.Parse("index_report")
 	if err != nil {
 		return err
 	}
@@ -132,19 +139,19 @@ func Report(cmd context.Context, cfg *commonConfig, args []string) error {
 	if err != nil {
 		return err
 	}
-	cmdcfg.libvuln, err = libvuln.Parse("scan")
+	cmdcfg.libvuln, err = libvuln.Parse("vulnerability_report")
 	if err != nil {
 		return err
 	}
-	cmdcfg.indexTmpl, err = template.New("dumpfile:index").Parse(*indexTmplString)
+	cmdcfg.indexTmpl, err = template.New("dumpfile:index").Funcs(fm).Parse(*indexTmplString)
 	if err != nil {
 		return err
 	}
-	cmdcfg.manifestTmpl, err = template.New("dumpfile:manifest").Parse(*manifestTmplString)
+	cmdcfg.manifestTmpl, err = template.New("dumpfile:manifest").Funcs(fm).Parse(*manifestTmplString)
 	if err != nil {
 		return err
 	}
-	cmdcfg.reportTmpl, err = template.New("dumpfile:report").Parse(*reportTmplString)
+	cmdcfg.reportTmpl, err = template.New("dumpfile:report").Funcs(fm).Parse(*reportTmplString)
 	if err != nil {
 		return err
 	}

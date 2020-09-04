@@ -2,14 +2,16 @@ package libvuln
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/matcher"
 	"github.com/quay/claircore/internal/vulnstore"
+	"github.com/quay/claircore/internal/vulnstore/postgres"
 	"github.com/quay/claircore/libvuln/driver"
 )
 
@@ -19,10 +21,10 @@ import (
 // Libvuln also runs background updaters which keep the vulnerability
 // database consistent.
 type Libvuln struct {
-	store        vulnstore.Store
-	db           *sqlx.DB
-	matchers     []driver.Matcher
-	killUpdaters context.CancelFunc
+	store    vulnstore.Store
+	pool     *pgxpool.Pool
+	matchers []driver.Matcher
+	*UpdateDriver
 }
 
 // New creates a new instance of the Libvuln library
@@ -31,34 +33,43 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 		Str("component", "libvuln/New").
 		Logger()
 	ctx = log.WithContext(ctx)
-	err := opts.Parse()
+
+	err := opts.parse(ctx)
 	if err != nil {
 		return nil, err
 	}
+	setFuncs, err := opts.updaterSetFunc(ctx, log)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Info().
 		Int32("count", opts.MaxConnPool).
 		Msg("initializing store")
-	db, vulnstore, err := initStore(ctx, opts)
+	if err := opts.migrations(ctx); err != nil {
+		return nil, err
+	}
+	pool, err := opts.pool(ctx)
 	if err != nil {
 		return nil, err
 	}
-	eC := make(chan error, 1024)
-	dC := make(chan context.CancelFunc, 1)
-	// block on updater initialization.
-	log.Info().Msg("updater initialization start")
-	go initUpdaters(ctx, opts, db, vulnstore, dC, eC)
-	killUpdaters := <-dC
-	log.Info().Msg("updater initialization done")
-	for err := range eC {
-		log.Warn().
-			Err(err).
-			Msg("updater error")
-	}
+
 	l := &Libvuln{
-		store:        vulnstore,
-		db:           db,
-		matchers:     opts.Matchers,
-		killUpdaters: killUpdaters,
+		store:    postgres.NewVulnStore(pool),
+		pool:     pool,
+		matchers: opts.Matchers,
+	}
+	l.UpdateDriver, err = NewUpdater(pool, opts.Client, opts.UpdaterConfigs, opts.UpdateWorkers, opts.UpdaterFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run updaters synchronously, initially.
+	if err := l.RunUpdaters(ctx, setFuncs...); err != nil {
+		return nil, err
+	}
+	if !opts.DisableBackgroundUpdates {
+		go l.loopUpdaters(ctx, opts.UpdateInterval, setFuncs...)
 	}
 	log.Info().Msg("libvuln initialized")
 	return l, nil
@@ -91,7 +102,7 @@ func (l *Libvuln) UpdateDiff(ctx context.Context, prev, cur uuid.UUID) (*driver.
 // known updater.
 //
 // These references are okay to expose externally.
-func (l *Libvuln) LatestUpdateOperations(ctx context.Context) (map[string]uuid.UUID, error) {
+func (l *Libvuln) LatestUpdateOperations(ctx context.Context) (map[string][]driver.UpdateOperation, error) {
 	return l.store.GetLatestUpdateRefs(ctx)
 }
 
@@ -101,4 +112,27 @@ func (l *Libvuln) LatestUpdateOperations(ctx context.Context) (map[string]uuid.U
 // return new results.
 func (l *Libvuln) LatestUpdateOperation(ctx context.Context) (uuid.UUID, error) {
 	return l.store.GetLatestUpdateRef(ctx)
+}
+
+// LoopUpdaters calls RunUpdaters in a loop.
+func (l *Libvuln) loopUpdaters(ctx context.Context, p time.Duration, fs ...driver.UpdaterSetFactory) {
+	log := zerolog.Ctx(ctx).With().
+		Str("component", "libvuln/Libvuln/loopUpdaters").
+		Logger()
+	ctx = log.WithContext(ctx)
+	t := time.NewTicker(p)
+	defer t.Stop()
+	done := ctx.Done()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			if err := l.RunUpdaters(ctx, fs...); err != nil {
+				log.Error().Err(err).Msg("unable to run updaters")
+				return
+			}
+		}
+	}
 }

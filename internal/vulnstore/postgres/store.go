@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/jmoiron/sqlx"
 
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/vulnstore"
@@ -15,14 +14,11 @@ import (
 
 // store implements all interfaces in the vulnstore package
 type Store struct {
-	db *sqlx.DB
-	// lower level access to the conn pool
 	pool *pgxpool.Pool
 }
 
-func NewVulnStore(db *sqlx.DB, pool *pgxpool.Pool) *Store {
+func NewVulnStore(pool *pgxpool.Pool) *Store {
 	return &Store{
-		db:   db,
 		pool: pool,
 	}
 }
@@ -55,7 +51,7 @@ func (s *Store) GetUpdateDiff(ctx context.Context, a, b uuid.UUID) (*driver.Upda
 	return getUpdateDiff(ctx, s.pool, a, b)
 }
 
-func (s *Store) GetLatestUpdateRefs(ctx context.Context) (map[string]uuid.UUID, error) {
+func (s *Store) GetLatestUpdateRefs(ctx context.Context) (map[string][]driver.UpdateOperation, error) {
 	return getLatestRefs(ctx, s.pool)
 }
 

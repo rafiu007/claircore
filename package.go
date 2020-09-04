@@ -1,5 +1,7 @@
 package claircore
 
+import "github.com/quay/claircore/pkg/cpe"
+
 type Package struct {
 	// unique ID of this package. this will be created as discovered by the library
 	// and used for persistence and hash map indexes
@@ -25,4 +27,11 @@ type Package struct {
 	Module string `json:"module,omitempty"`
 	// Package architecture
 	Arch string `json:"arch,omitempty"`
+	// CPE name for package
+	CPE cpe.WFN `json:"cpe,omitempty"`
 }
+
+const (
+	BINARY = "binary"
+	SOURCE = "source"
+)

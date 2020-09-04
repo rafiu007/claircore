@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/quay/goval-parser/oval"
 
@@ -13,14 +14,15 @@ import (
 
 func TestParse(t *testing.T) {
 	t.Parallel()
-	ctx, done := context.WithCancel(context.Background())
+	ctx := context.Background()
+	ctx, done := log.TestLogger(ctx, t)
 	defer done()
-	ctx = log.TestLogger(ctx, t)
+
 	u, err := NewUpdater(3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Open("testdata/Red_Hat_Enterprise_Linux_3.xml")
+	f, err := os.Open("testdata/com.redhat.rhsa-20201980.xml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,10 +32,21 @@ func TestParse(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("found %d vulnerabilities", len(vs))
-	// I think there's 3510 vulnerabilities in the rhel3 database, including the
-	// EOL notices.
-	if got, want := len(vs), 3510; got != want {
+	// 16 packages, 2 cpes = 32 vulnerabilities
+	if got, want := len(vs), 32; got != want {
 		t.Fatalf("got: %d vulnerabilities, want: %d vulnerabilities", got, want)
+	}
+	count := make(map[string]int)
+	for _, vuln := range vs {
+		count[vuln.Repo.Name]++
+	}
+
+	const (
+		base      = "cpe:/a:redhat:enterprise_linux:8"
+		appstream = "cpe:/a:redhat:enterprise_linux:8::appstream"
+	)
+	if count[base] != 16 || count[appstream] != 16 {
+		t.Fatalf("got: %v vulnerabilities with, want 16 of each", count)
 	}
 }
 
@@ -155,15 +168,14 @@ var ovalDef = oval.Definition{XMLName: xml.Name{Space: "http://oval.mitre.org/XM
 		AffectedCPEList: []string{"cpe:/o:redhat:enterprise_linux:3"},
 		Refs:            []oval.Ref(nil),
 		Bugs:            []oval.Bug(nil),
-		Issued: struct {
-			Date string "xml:\"date,attr\""
-		}{
-			Date: "2010-05-06"},
-		Updated: struct {
-			Date string "xml:\"date,attr\""
-		}{
-			Date: "2010-05-06"}},
-	Debian: oval.Debian{XMLName: xml.Name{Space: "", Local: ""}, MoreInfo: "", Date: ""},
+		Issued: oval.Date{
+			Date: time.Date(2010, 5, 6, 0, 0, 0, 0, time.UTC),
+		},
+		Updated: oval.Date{
+			Date: time.Date(2010, 5, 6, 0, 0, 0, 0, time.UTC),
+		},
+	},
+	Debian: oval.Debian{XMLName: xml.Name{Space: "", Local: ""}, MoreInfo: "", Date: oval.Date{Date: time.Time{}}},
 	Criteria: oval.Criteria{XMLName: xml.Name{Space: "http://oval.mitre.org/XMLSchema/oval-definitions-5", Local: "criteria"},
 		Operator: "AND",
 		Criterias: []oval.Criteria{

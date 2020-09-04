@@ -4,6 +4,7 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,7 +43,7 @@ func ParseCompressor(s string) (c Compressor, err error) {
 	return c, nil
 }
 
-// Fetcher implements the driver.FetcherNG interface.
+// Fetcher implements the driver.Fetcher interface.
 //
 // Fetcher expects all of its exported members to be filled out appropriately,
 // and may panic if not.
@@ -56,8 +57,7 @@ type Fetcher struct {
 // Fetcher.Compression, using the client provided as Fetcher.Client.
 //
 // Fetch makes GET requests, and will make conditional requests using the
-// passed-in hint as an HTTP date. The returned hint will be an HTTP date if the
-// server sends a Last-Modified header.
+// passed-in hint.
 //
 // Tmp.File is used to return a ReadCloser that outlives the passed-in context.
 func (f *Fetcher) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCloser, driver.Fingerprint, error) {
@@ -77,11 +77,11 @@ func (f *Fetcher) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 		ProtoMinor: 1,
 		Host:       f.URL.Host,
 	}
-	if hint != "" {
-		log.Debug().
-			Str("hint", string(hint)).
-			Msg("using hint")
-		req.Header.Set("If-Modified-Since", string(hint))
+	var fp fingerprint
+	if h := string(hint); h != "" {
+		if err := json.Unmarshal([]byte(h), &fp); err == nil {
+			fp.Set(req.Header)
+		}
 	}
 
 	res, err := f.Client.Do(req.WithContext(ctx))
@@ -129,7 +129,7 @@ func (f *Fetcher) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 	success := false
 	defer func() {
 		if !success {
-			log.Debug().Msg("unsuccessful, cleaing up tempfile")
+			log.Debug().Msg("unsuccessful, cleaning up tempfile")
 			if err := tf.Close(); err != nil {
 				log.Warn().Err(err).Msg("failed to close tempfile")
 			}
@@ -144,12 +144,35 @@ func (f *Fetcher) Fetch(ctx context.Context, hint driver.Fingerprint) (io.ReadCl
 	}
 	log.Debug().Msg("decompressed and buffered database")
 
-	if t := res.Header.Get("Last-Modified"); t != "" {
-		hint = driver.Fingerprint(t)
-	}
-	log.Debug().
-		Str("hint", string(hint)).
-		Msg("using new hint")
+	fp.From(res.Header)
+	hint = fp.Fingerprint()
 	success = true
 	return tf, hint, nil
+}
+
+type fingerprint struct {
+	Etag string `json:",omitempty"`
+	Date string `json:",omitempty"`
+}
+
+func (f fingerprint) Set(h http.Header) {
+	if f.Etag != "" {
+		h.Set("if-none-match", f.Etag)
+	}
+	if f.Date != "" {
+		h.Set("if-modified-since", f.Date)
+	}
+}
+
+func (f *fingerprint) From(h http.Header) {
+	if tag := h.Get("etag"); tag != "" {
+		f.Etag = tag
+		return
+	}
+	f.Date = h.Get("last-modified")
+}
+
+func (f fingerprint) Fingerprint() driver.Fingerprint {
+	b, _ := json.Marshal(f)
+	return driver.Fingerprint(string(b))
 }

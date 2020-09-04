@@ -24,11 +24,14 @@ func getUpdateDiff(ctx context.Context, pool *pgxpool.Pool, prev, cur uuid.UUID)
 		name,
 		updater,
 		description,
+		issued,
 		links,
 		severity,
 		normalized_severity,
 		package_name,
 		package_version,
+		package_module,
+		package_arch,
 		package_kind,
 		dist_id,
 		dist_name,
@@ -38,6 +41,7 @@ func getUpdateDiff(ctx context.Context, pool *pgxpool.Pool, prev, cur uuid.UUID)
 		dist_arch,
 		dist_cpe,
 		dist_pretty_name,
+		arch_operation,
 		repo_name,
 		repo_key,
 		repo_uri
@@ -112,11 +116,11 @@ func populateRefs(ctx context.Context, diff *driver.UpdateDiff, pool *pgxpool.Po
 	const query = `SELECT updater, fingerprint, date FROM update_operation WHERE ref = $1;`
 	var err error
 
-	diff.B.Ref = cur
+	diff.Cur.Ref = cur
 	err = pool.QueryRow(ctx, query, cur).Scan(
-		&diff.B.Updater,
-		&diff.B.Fingerprint,
-		&diff.B.Date,
+		&diff.Cur.Updater,
+		&diff.Cur.Fingerprint,
+		&diff.Cur.Date,
 	)
 	switch {
 	case err == nil:
@@ -129,11 +133,11 @@ func populateRefs(ctx context.Context, diff *driver.UpdateDiff, pool *pgxpool.Po
 	if prev == uuid.Nil {
 		return nil
 	}
-	diff.A.Ref = prev
+	diff.Prev.Ref = prev
 	err = pool.QueryRow(ctx, query, prev).Scan(
-		&diff.A.Updater,
-		&diff.A.Fingerprint,
-		&diff.A.Date,
+		&diff.Prev.Updater,
+		&diff.Prev.Fingerprint,
+		&diff.Prev.Date,
 	)
 	switch {
 	case err == nil:

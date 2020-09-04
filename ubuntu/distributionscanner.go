@@ -52,6 +52,14 @@ var ubuntuRegexes = []ubuntuRegex{
 		release: Xenial,
 		regexp:  regexp.MustCompile(`(?is)\bubuntu\b.*\bxenial\b`),
 	},
+	{
+		release: Eoan,
+		regexp:  regexp.MustCompile(`(?is)\bubuntu\b.*\beoan\b`),
+	},
+	{
+		release: Focal,
+		regexp:  regexp.MustCompile(`(?is)\bubuntu\b.*\bfocal\b`),
+	},
 }
 
 const osReleasePath = `etc/os-release`
@@ -77,7 +85,7 @@ func (*DistributionScanner) Kind() string { return scannerKind }
 // and perform a regex match for keywords indicating the associated Ubuntu release
 //
 // If neither file is found a (nil,nil) is returned.
-// If the files are found but all regexp fail to match an empty distribution is returned.
+// If the files are found but all regexp fail to match an empty slice is returned.
 func (ds *DistributionScanner) Scan(ctx context.Context, l *claircore.Layer) ([]*claircore.Distribution, error) {
 	defer trace.StartRegion(ctx, "Scanner.Scan").End()
 	log := zerolog.Ctx(ctx).With().
@@ -98,7 +106,7 @@ func (ds *DistributionScanner) Scan(ctx context.Context, l *claircore.Layer) ([]
 			return []*claircore.Distribution{dist}, nil
 		}
 	}
-	return nil, nil
+	return []*claircore.Distribution{}, nil
 }
 
 // parse attempts to match all Ubuntu release regexp and returns the associated

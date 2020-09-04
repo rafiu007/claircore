@@ -168,7 +168,8 @@ func (ps *Scanner) Scan(ctx context.Context, layer *claircore.Layer) ([]*clairco
 	// hopefully there aren't any others strewn about.
 	tarcmd := exec.CommandContext(ctx, "tar", "-xC", root,
 		"--exclude", "dev",
-		"--exclude", ".wh*")
+		"--exclude", ".wh*",
+		"--delay-directory-restore")
 	tarcmd.Stdin = rd
 	tarcmd.Stderr = &errbuf
 	log.Debug().Str("dir", root).Strs("cmd", tarcmd.Args).Msg("tar invocation")
@@ -176,7 +177,8 @@ func (ps *Scanner) Scan(ctx context.Context, layer *claircore.Layer) ([]*clairco
 		log.Error().
 			Str("dir", root).
 			Strs("cmd", tarcmd.Args).
-			Str("err", errbuf.String()).
+			Str("stderr", errbuf.String()).
+			AnErr("err", err).
 			Msg("error extracting layer")
 		return nil, fmt.Errorf("rpm: failed to untar: %w", err)
 	}
@@ -262,7 +264,9 @@ func querySplit(data []byte, atEOF bool) (advance int, token []byte, err error) 
 
 func parsePackage(ctx context.Context, log zerolog.Logger, src map[string]*claircore.Package, buf *bytes.Buffer) (*claircore.Package, error) {
 	defer trace.StartRegion(ctx, "parsePackage").End()
-	p := claircore.Package{}
+	p := claircore.Package{
+		Kind: claircore.BINARY,
+	}
 	var err error
 	var line string
 
@@ -309,6 +313,7 @@ func parsePackage(ctx context.Context, log zerolog.Logger, src map[string]*clair
 			p.Source = &claircore.Package{
 				Name:    name,
 				Version: sp[len(sp)-2] + "-" + sp[len(sp)-1],
+				Kind:    claircore.SOURCE,
 			}
 			src[name] = p.Source
 		case 5:

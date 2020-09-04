@@ -4,114 +4,77 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+	"strings"
+	"sync"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	"github.com/quay/claircore/internal/vulnstore"
 	"github.com/quay/claircore/libvuln/driver"
-	"github.com/quay/claircore/pkg/distlock"
 )
 
-// Controller is a control structure for fetching, parsing, and updating a vulnstore.
-type Controller struct {
-	*Opts
+// Controller is the interface that updater Controllers implement.
+type Controller interface {
+	// Run has the Controller execute all the Updaters passed on the channel,
+	// until it's closed. The method runs synchronously and only returns after
+	// the channel is closed or the context is canceled.
+	//
+	// Any spawned goroutines should inherit the passed-in Context.
+	//
+	// A call to Run should be thought of as one execution of the Updaters.
+	// If a caller wants to call Run in a loop, it should use a new channel on
+	// each iteration.
+	Run(context.Context, <-chan driver.Updater) error
 }
 
-// Opts are options used to create an Updater
-type Opts struct {
-	// an embedded updater interface
-	driver.Updater
-	// a unique name for this controller. must be unique between controllers
-	Name string
-	// store for persistence
-	Store vulnstore.Updater
-	// update interval
-	Interval time.Duration
-	// lock to ensure only process updating
-	Lock distlock.Locker
-	// immediately update on construction
-	UpdateOnStart bool
+// Errmap is a wrapper around a group of errors.
+type errmap struct {
+	sync.Mutex
+	m map[string]error
 }
 
-// New is a constructor for an Controller
-func New(opts *Opts) *Controller {
-	return &Controller{
-		Opts: opts,
-	}
+func (e errmap) add(name string, err error) {
+	e.Lock()
+	defer e.Unlock()
+	e.m[name] = err
 }
 
-// Start begins a long running update controller. cancel ctx to stop.
-func (u *Controller) Start(ctx context.Context) error {
-	log := zerolog.Ctx(ctx).With().
-		Str("component", "internal/updater/Controller").
-		Str("name", u.Name).
-		Dur("interval", u.Interval).
-		Logger()
-	ctx = log.WithContext(ctx)
-	log.Info().Msg("controller running")
-	go u.start(ctx)
-	return nil
+func (e errmap) len() int {
+	e.Lock()
+	defer e.Unlock()
+	return len(e.m)
 }
 
-// start implements the event loop of an updater controller
-func (u *Controller) start(ctx context.Context) {
-	t := time.NewTicker(u.Interval)
-	defer t.Stop()
-
-	if u.UpdateOnStart {
-		u.Update(ctx)
+func (e errmap) error() error {
+	e.Lock()
+	defer e.Unlock()
+	var b strings.Builder
+	b.WriteString("updating errors:\n")
+	for n, err := range e.m {
+		fmt.Fprintf(&b, "\t%s: %v\n", n, err)
 	}
-
-	for {
-		select {
-		case <-t.C:
-			u.Update(ctx)
-		case <-ctx.Done():
-			log.Printf("updater %v is exiting due to context cancelation: %v", u.Name, ctx.Err())
-			return
-		}
-	}
+	return errors.New(b.String())
 }
 
-// Update triggers an update procedure. exported to make testing easier.
-func (u *Controller) Update(ctx context.Context) error {
-	log := zerolog.Ctx(ctx).With().
-		Str("component", "internal/updater/Controller.Update").
-		Str("updater", u.Updater.Name()).
-		Logger()
-	ctx = log.WithContext(ctx)
-	log.Info().Msg("looking for updates")
-	// attempt to get distributed lock. if we cannot another updater is currently updating the vulnstore
-	locked, err := u.tryLock(ctx)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Msg("unexpected error while trying lock")
-		return err
-	}
-	if !locked {
-		log.Debug().Msg("another process is updating. waiting till next update interval")
-		return nil
-	}
-	defer u.Lock.Unlock()
+// DriveUpdater drives the updater.
+//
+// The caller is expected to handle any locking or concurrency control needed.
+func driveUpdater(ctx context.Context, log zerolog.Logger, u driver.Updater, s vulnstore.Updater) error {
+	log.Debug().Msg("start")
+	defer log.Debug().Msg("done")
+	name := u.Name()
 
-	// retrieve previous fingerprint. GetUpdateOperations will
-	// return update operations in descending order
 	var prevFP driver.Fingerprint
-	allUOs, err := u.Store.GetUpdateOperations(ctx, u.Updater.Name())
+	// Get previous fingerprint, if present.
+	// A fingerprint being missing is not an error.
+	opmap, err := s.GetUpdateOperations(ctx, name)
 	if err != nil {
 		return err
 	}
-	UOs := allUOs[u.Updater.Name()]
-	if len(UOs) > 0 {
-		prevFP = UOs[0].Fingerprint
+	if s := opmap[name]; len(s) > 0 {
+		prevFP = s[0].Fingerprint
 	}
 
-	// Fetch the vulnerability database. if the fetcher
-	// determines no update is necessary a driver.Unchanged
-	// error will be returned
 	vulnDB, newFP, err := u.Fetch(ctx, prevFP)
 	if vulnDB != nil {
 		defer vulnDB.Close()
@@ -125,31 +88,18 @@ func (u *Controller) Update(ctx context.Context) error {
 		return err
 	}
 
-	// parse the vulndb
 	vulns, err := u.Parse(ctx, vulnDB)
 	if err != nil {
 		return fmt.Errorf("failed to parse the fetched vulnerability database: %v", err)
 	}
 
-	// update the vulnstore
-	ref, err := u.Store.UpdateVulnerabilities(ctx, u.Updater.Name(), newFP, vulns)
+	ref, err := s.UpdateVulnerabilities(ctx, name, newFP, vulns)
 	if err != nil {
 		return fmt.Errorf("failed to update vulnerabilities: %v", err)
 	}
 
 	log.Info().
 		Str("ref", ref.String()).
-		Msg("successfully updated the vulnstore")
+		Msg("successful update")
 	return nil
-}
-
-// lock attempts to acquire a distributed lock
-func (u *Controller) tryLock(ctx context.Context) (bool, error) {
-	// attempt lock acquisiton
-	ok, err := u.Lock.TryLock(ctx, u.Name)
-	if err != nil {
-		return false, fmt.Errorf("experienced an unexpected error when acquiring lock %v", err)
-	}
-	// did not acquire, another process is updating the database. bail
-	return ok, err
 }

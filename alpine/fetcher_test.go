@@ -2,8 +2,10 @@ package alpine
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/quay/claircore/libvuln/driver"
@@ -11,9 +13,9 @@ import (
 )
 
 func TestFetcher(t *testing.T) {
-	ctx, done := context.WithCancel(context.Background())
+	ctx := context.Background()
+	ctx, done := log.TestLogger(ctx, t)
 	defer done()
-	ctx = log.TestLogger(ctx, t)
 
 	var table = []struct {
 		release   Release
@@ -28,7 +30,17 @@ func TestFetcher(t *testing.T) {
 	}
 
 	for _, test := range table {
+		fi, err := os.Stat(test.serveFile)
+		if err != nil {
+			t.Error(err)
+		}
+		tag := fmt.Sprintf(`"%d"`, fi.ModTime().UnixNano())
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("if-none-match") == tag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			w.Header().Set("etag", tag)
 			http.ServeFile(w, r, test.serveFile)
 		}))
 

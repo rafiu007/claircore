@@ -1,13 +1,12 @@
 package aws
 
 import (
-	"compress/gzip"
 	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
+	"time"
 
 	"github.com/quay/alas"
 
@@ -50,6 +49,9 @@ func (u *Updater) Fetch(ctx context.Context, fingerprint driver.Fingerprint) (io
 	if err != nil {
 		return nil, "", fmt.Errorf("updates repo metadata could not be retrieved: %v", err)
 	}
+	if updatesRepoMD.Checksum.Sum == string(fingerprint) {
+		return nil, fingerprint, driver.Unchanged
+	}
 
 	tctx, cancel = context.WithTimeout(ctx, defaultOpTimeout)
 	defer cancel()
@@ -57,12 +59,6 @@ func (u *Updater) Fetch(ctx context.Context, fingerprint driver.Fingerprint) (io
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to retrieve update info: %v", err)
 	}
-
-	gzip, err := gzip.NewReader(rc)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create gzip reader: %v", err)
-	}
-	rc = ioutil.NopCloser(gzip)
 
 	return rc, driver.Fingerprint(updatesRepoMD.Checksum.Sum), nil
 }
@@ -77,10 +73,15 @@ func (u *Updater) Parse(ctx context.Context, contents io.ReadCloser) ([]*clairco
 
 	vulns := []*claircore.Vulnerability{}
 	for _, update := range updates.Updates {
+		issued, err := time.Parse("2006-01-02 15:04", update.Issued.Date)
+		if err != nil {
+			return vulns, err
+		}
 		partial := &claircore.Vulnerability{
 			Updater:            u.Name(),
 			Name:               update.ID,
 			Description:        update.Description,
+			Issued:             issued,
 			Links:              refsToLinks(update),
 			Severity:           update.Severity,
 			NormalizedSeverity: NormalizeSeverity(update.Severity),
@@ -102,7 +103,7 @@ func (u *Updater) unpack(partial *claircore.Vulnerability, packages []alas.Packa
 
 		v.Package = &claircore.Package{
 			Name: alasPKG.Name,
-			Kind: "binary",
+			Kind: claircore.BINARY,
 		}
 		v.FixedInVersion = fmt.Sprintf("%s-%s", alasPKG.Version, alasPKG.Release)
 

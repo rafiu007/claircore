@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/crgimenes/goconfig"
@@ -12,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/quay/claircore/libvuln"
-	libhttp "github.com/quay/claircore/libvuln/http"
+	"github.com/quay/claircore/updater/defaults"
 )
 
 // Config this struct is using the goconfig library for simple flag and env var
@@ -34,23 +35,31 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("failed to parse config: %v", err)
 	}
+	if err := defaults.Error(); err != nil {
+		log.Fatal().Err(err).Msg("default updaters errored on construction")
+	}
 
 	// setup pretty logging
 	zerolog.SetGlobalLevel(logLevel(conf))
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	ctx = log.Logger.WithContext(ctx)
 
-	opts := confToLibvulnOpts(conf)
-
 	// create libvuln
+	opts := confToLibvulnOpts(conf)
 	lib, err := libvuln.New(ctx, opts)
 	if err != nil {
 		log.Fatal().Msgf("failed to create libvuln %v", err)
 	}
 
-	httpServ := httpServer(ctx, conf, lib)
+	h := libvuln.NewHandler(lib)
+	srv := &http.Server{
+		Addr:        conf.HTTPListenAddr,
+		Handler:     h,
+		BaseContext: func(_ net.Listener) context.Context { return ctx },
+	}
+
 	log.Printf("starting http server on %v", conf.HTTPListenAddr)
-	err = httpServ.ListenAndServe()
+	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal().Msgf("failed to start http server: %v", err)
 	}
@@ -77,29 +86,16 @@ func logLevel(conf Config) zerolog.Level {
 	}
 }
 
-func httpServer(ctx context.Context, conf Config, lib *libvuln.Libvuln) *http.Server {
-	// create our http mux and add routes
-	mux := http.NewServeMux()
-
-	// create server and launch in go routine
-	s := &http.Server{
-		Addr:        conf.HTTPListenAddr,
-		Handler:     mux,
-		BaseContext: func(_ net.Listener) context.Context { return ctx },
-	}
-
-	// create handlers
-	mux.Handle("/scan", libhttp.VulnScan(lib))
-
-	return s
-}
-
 func confToLibvulnOpts(conf Config) *libvuln.Opts {
 	opts := &libvuln.Opts{
 		ConnString:  conf.ConnString,
 		MaxConnPool: int32(conf.MaxConnPool),
 		Migrations:  true,
-		Run:         conf.Run,
+		UpdaterSets: nil,
+	}
+	re, err := regexp.Compile(conf.Run)
+	if err == nil {
+		opts.UpdaterFilter = re.MatchString
 	}
 
 	return opts
