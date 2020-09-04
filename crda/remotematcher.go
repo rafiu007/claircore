@@ -20,6 +20,11 @@ import (
 var (
 	_ driver.Matcher       = (*Matcher)(nil)
 	_ driver.RemoteMatcher = (*Matcher)(nil)
+
+	defaultRepo = claircore.Repository{
+		Name: "pypi",
+		URI:  "https://pypi.org/simple",
+	}
 )
 
 const (
@@ -33,6 +38,7 @@ const (
 type Matcher struct {
 	client *http.Client
 	url    *url.URL
+	repo   *claircore.Repository
 }
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
@@ -79,6 +85,9 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 	if m.client == nil {
 		m.client = http.DefaultClient
 	}
+	if m.repo == nil {
+		m.repo = &defaultRepo
+	}
 
 	return &m, nil
 }
@@ -103,6 +112,17 @@ func WithURL(uri string) Option {
 			return err
 		}
 		m.url = u
+		return nil
+	}
+}
+
+// WithRepo sets the repository information that will be associated with all the
+// vulnerabilites found.
+//
+// If not passed to NewMatcher, a default Repository will be used.
+func WithRepo(r *claircore.Repository) Option {
+	return func(m *Matcher) error {
+		m.repo = r
 		return nil
 	}
 }
@@ -235,6 +255,7 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
 				FixedInVersion:     strings.Join(vuln.FixedIn, ","),
 				Package:            record.Package,
+				Repo:               m.repo,
 			})
 		}
 		return vulns, nil

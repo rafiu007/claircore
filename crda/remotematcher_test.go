@@ -13,6 +13,13 @@ import (
 	"github.com/quay/claircore/crda"
 )
 
+var (
+	pypiRepo = claircore.Repository{
+		Name: "python",
+		URI:  "https://python.org",
+	}
+)
+
 func checkVulnerabilitiesAreEqual(t *testing.T, expected []*claircore.Vulnerability, got []*claircore.Vulnerability) {
 	if len(expected) != len(got) {
 		t.Errorf("len %d != %d", len(expected), len(got))
@@ -20,14 +27,11 @@ func checkVulnerabilitiesAreEqual(t *testing.T, expected []*claircore.Vulnerabil
 	}
 
 	for i, expected := range expected {
-		if expected.Package.ID != got[i].Package.ID {
-			t.Errorf("Package.ID %s != %s", expected.Package.ID, got[i].Package.ID)
+		if *expected.Package != *got[i].Package {
+			t.Errorf("Package %#v != %#v", expected.Package, got[i].Package)
 		}
-		if expected.Package.Name != got[i].Package.Name {
-			t.Errorf("Package.Name %s != %s", expected.Package.Name, got[i].Package.Name)
-		}
-		if expected.Package.Version != got[i].Package.Version {
-			t.Errorf("Package.Version %s != %s", expected.Package.Version, got[i].Package.Version)
+		if expected.Repo != nil && *expected.Repo != *got[i].Repo {
+			t.Errorf("Repo %#v != %#v", expected.Repo, got[i].Repo)
 		}
 		if got[i].ID == "" {
 			t.Errorf("ID must be a valid string")
@@ -35,7 +39,7 @@ func checkVulnerabilitiesAreEqual(t *testing.T, expected []*claircore.Vulnerabil
 		if got[i].Description == "" {
 			t.Errorf("Description must be a valid string")
 		}
-		if strings.Compare(got[i].Updater, "CodeReadyAnalytics") != 0 {
+		if got[i].Updater != "CodeReadyAnalytics" {
 			t.Errorf("Updater CodeReadyAnalytics != %s", got[i].Updater)
 		}
 		if got[i].Severity == "" {
@@ -74,8 +78,8 @@ type matcherTestcase struct {
 	Matcher  *crda.Matcher
 }
 
-func newMatcher(t *testing.T, srv *httptest.Server) *crda.Matcher {
-	m, err := crda.NewMatcher(crda.WithClient(srv.Client()), crda.WithURL(srv.URL))
+func newMatcher(t *testing.T, srv *httptest.Server, repo *claircore.Repository) *crda.Matcher {
+	m, err := crda.NewMatcher(crda.WithClient(srv.Client()), crda.WithURL(srv.URL), crda.WithRepo(repo))
 	if err != nil {
 		t.Errorf("there should be no err %v", err)
 	}
@@ -97,7 +101,7 @@ func TestRemoteMatcher(t *testing.T) {
 			Name:     "pypi/empty",
 			R:        []*claircore.IndexRecord{},
 			Expected: map[string][]*claircore.Vulnerability{},
-			Matcher:  newMatcher(t, srv),
+			Matcher:  newMatcher(t, srv, &pypiRepo),
 		},
 		{
 			Name: "pypi/{pyyaml-vuln,flask-novuln}",
@@ -125,10 +129,11 @@ func TestRemoteMatcher(t *testing.T) {
 							Name:    "pyyaml",
 							Version: "5.3",
 						},
+						Repo: &pypiRepo,
 					},
 				},
 			},
-			Matcher: newMatcher(t, srv),
+			Matcher: newMatcher(t, srv, &pypiRepo),
 		},
 		{
 			Name: "pypi/{pyyaml-novuln,flask-novuln}",
@@ -149,7 +154,7 @@ func TestRemoteMatcher(t *testing.T) {
 				},
 			},
 			Expected: map[string][]*claircore.Vulnerability{},
-			Matcher:  newMatcher(t, srv),
+			Matcher:  newMatcher(t, srv, nil),
 		},
 		{
 			Name: "pypi/{pyyaml-vuln,flask-vuln}",
@@ -196,7 +201,7 @@ func TestRemoteMatcher(t *testing.T) {
 					},
 				},
 			},
-			Matcher: newMatcher(t, srv),
+			Matcher: newMatcher(t, srv, nil),
 		}}
 	for _, tc := range tt {
 		t.Run(tc.Name, tc.Run)
