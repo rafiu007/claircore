@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/zerolog"
 
+	"fmt"
+
 	"github.com/quay/claircore"
 	"github.com/quay/claircore/internal/matcher"
 	"github.com/quay/claircore/internal/vulnstore"
@@ -52,6 +54,17 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 	pool, err := opts.pool(ctx)
 	if err != nil {
 		return nil, err
+	}
+	//For Testing
+	if opts.RemoteMatchers != nil {
+
+		/*log.Info().
+		Str("remote_matchers", "hey").
+		Msg("Printing Remote Matcher")
+		*/
+		for i, j := range opts.RemoteMatchers {
+			fmt.Println(i, j)
+		}
 	}
 
 	l := &Libvuln{
