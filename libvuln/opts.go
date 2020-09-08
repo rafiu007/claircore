@@ -143,8 +143,11 @@ func (o *Opts) parse(ctx context.Context) error {
 	// merge default matchers with any out-of-tree specified
 	o.Matchers = append(o.Matchers, defaultMatchers...)
 
-	if m, err := crda.NewMatcher(); err == nil {
+	/*if m, err := crda.NewMatcher(); err == nil {
 		o.Matchers = append(o.Matchers, m)
+	}*/
+	if o.RemoteMatchers != nil {
+		remoteMatchersFunc(o)
 	}
 
 	if o.Client == nil {
@@ -154,6 +157,18 @@ func (o *Opts) parse(ctx context.Context) error {
 		o.UpdaterConfigs = make(map[string]driver.ConfigUnmarshaler)
 	}
 
+	return nil
+}
+
+func remoteMatchersFunc(o *Opts) error {
+	for _, m := range o.RemoteMatchers {
+		if m["name"] == "crda" {
+			m, err := crda.NewMatcher()
+			if err == nil {
+				o.Matchers = append(o.Matchers, m)
+			}
+		}
+	}
 	return nil
 }
 
