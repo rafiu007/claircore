@@ -147,7 +147,7 @@ func (o *Opts) parse(ctx context.Context) error {
 		o.Matchers = append(o.Matchers, m)
 	}*/
 	if o.RemoteMatchers != nil {
-		remoteMatchersFunc(o)
+		remoteMatchersFunc(&o)
 	}
 
 	if o.Client == nil {
@@ -163,7 +163,7 @@ func (o *Opts) parse(ctx context.Context) error {
 func remoteMatchersFunc(o *Opts) error {
 	for _, m := range o.RemoteMatchers {
 		if m["name"] == "crda" {
-			m, err := crda.NewMatcher()
+			m, err := crda.NewMatchers()
 			if err == nil {
 				o.Matchers = append(o.Matchers, m)
 			}

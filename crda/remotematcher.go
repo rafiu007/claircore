@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/rs/zerolog"
 
@@ -74,6 +75,38 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 		m.url, err = url.Parse(defaultURL)
 		if err != nil {
 			return nil, err
+		}
+	}
+	if m.client == nil {
+		m.client = http.DefaultClient
+	}
+
+	return &m, nil
+}
+
+func getUrlFromString(params string) (string, string, error) {
+	c := strings.Split(params, " ")
+	tempURl := strings.Split(c[0], "=")
+	url := tempURl[1] + tempURl[2]
+	tempEcosystem := strings.Split(c[1], "=")
+	ecosystem := tempEcosystem[1]
+	return url, ecosystem, nil
+}
+
+// NewMatcher returns a configured Matcher or reports an error.
+func NewMatchers(params string) (*Matcher, error) {
+	m := Matcher{}
+	URL, ecosystem, err := getUrlFromString(params)
+	fmt.Println(ecosystem)
+	if err == nil {
+		m.url, err = url.Parse(URL)
+		if err != nil {
+			return nil, err
+		} else {
+			m.url, err = url.Parse(defaultURL)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	if m.client == nil {
