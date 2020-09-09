@@ -94,8 +94,14 @@ func getUrlFromString(params string) (string, string, error) {
 }
 
 // NewMatcher returns a configured Matcher or reports an error.
-func NewMatchers(params string) (*Matcher, error) {
+func NewMatchers(params string, opt ...Option) (*Matcher, error) {
 	m := Matcher{}
+	for _, f := range opt {
+		if err := f(&m); err != nil {
+			return nil, err
+		}
+	}
+
 	URL, ecosystem, err := getUrlFromString(params)
 	fmt.Println(ecosystem)
 	if err == nil {
