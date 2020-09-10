@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -163,13 +164,24 @@ func (o *Opts) parse(ctx context.Context) error {
 func remoteMatchersFunc(o *Opts) error {
 	for _, m := range o.RemoteMatchers {
 		if m["name"] == "crda" {
-			m, err := crda.NewMatchers(m["params"])
+			m, err := crda.NewMatcher(WithParams(m["params"]))
 			if err == nil {
 				o.Matchers = append(o.Matchers, m)
 			}
 		}
 	}
 	return nil
+}
+
+func WithParams(params string) string {
+	c := strings.Split(params, " ")
+	tempURl := strings.Split(c[0], "=")
+	url := tempURl[1] + tempURl[2]
+
+	//Not sure what to do with ecosystem as of now
+	//tempEcosystem := strings.Split(c[1], "=")
+	//ecosystem := tempEcosystem[1]
+	return url
 }
 
 // UpdaterSetFunc returns the configured UpdaterSetFactories.

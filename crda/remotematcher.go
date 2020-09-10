@@ -62,57 +62,20 @@ type VulnReport struct {
 type Option func(*Matcher) error
 
 // NewMatcher returns a configured Matcher or reports an error.
-func NewMatcher(opt ...Option) (*Matcher, error) {
+func NewMatcher(uri string, opt ...Option) (*Matcher, error) {
 	m := Matcher{}
 	for _, f := range opt {
 		if err := f(&m); err != nil {
 			return nil, err
 		}
 	}
-
+	//Checking the uri and populating the matcher with it
+	WithURL(uri)
 	if m.url == nil {
 		var err error
 		m.url, err = url.Parse(defaultURL)
 		if err != nil {
 			return nil, err
-		}
-	}
-	if m.client == nil {
-		m.client = http.DefaultClient
-	}
-
-	return &m, nil
-}
-
-func getUrlFromString(params string) (string, string, error) {
-	c := strings.Split(params, " ")
-	tempURl := strings.Split(c[0], "=")
-	url := tempURl[1] + tempURl[2]
-	tempEcosystem := strings.Split(c[1], "=")
-	ecosystem := tempEcosystem[1]
-	return url, ecosystem, nil
-}
-
-// NewMatcher returns a configured Matcher or reports an error.
-func NewMatchers(params string, opt ...Option) (*Matcher, error) {
-	m := Matcher{}
-	for _, f := range opt {
-		if err := f(&m); err != nil {
-			return nil, err
-		}
-	}
-
-	URL, ecosystem, err := getUrlFromString(params)
-	fmt.Println(ecosystem)
-	if err == nil {
-		m.url, err = url.Parse(URL)
-		if err != nil {
-			return nil, err
-		} else {
-			m.url, err = url.Parse(defaultURL)
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
 	if m.client == nil {
