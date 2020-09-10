@@ -163,7 +163,7 @@ func (o *Opts) parse(ctx context.Context) error {
 func remoteMatchersFunc(o *Opts) error {
 	for _, m := range o.RemoteMatchers {
 		if m["name"] == "crda" {
-			m, err := crda.NewMatcher(m["params"])
+			m, err := crda.NewMatcher(crda.WithParams(m["params"]))
 			if err == nil {
 				o.Matchers = append(o.Matchers, m)
 			}

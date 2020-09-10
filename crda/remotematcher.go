@@ -62,7 +62,7 @@ type VulnReport struct {
 type Option func(*Matcher) error
 
 // NewMatcher returns a configured Matcher or reports an error.
-func NewMatcher(params string, opt ...Option) (*Matcher, error) {
+func NewMatcher(uri string, opt ...Option) (*Matcher, error) {
 	m := Matcher{}
 	for _, f := range opt {
 		if err := f(&m); err != nil {
@@ -70,7 +70,7 @@ func NewMatcher(params string, opt ...Option) (*Matcher, error) {
 		}
 	}
 	//Checking the uri and populating the matcher with it
-	WithURL(WithParams(params))
+	WithURL(uri)
 	if m.url == nil {
 		var err error
 		m.url, err = url.Parse(defaultURL)
@@ -88,8 +88,8 @@ func NewMatcher(params string, opt ...Option) (*Matcher, error) {
 // WithParams parses the Params string and returns a url for remote matcher.
 func WithParams(params string) string {
 	splitParams := strings.Split(params, " ")
-	splitURl := strings.Split(splitParams[0], "=")
-	uri := splitURl[1] + splitURl[2]
+	splitURL := strings.Split(splitParams[0], "=")
+	uri := splitURL[1] + splitURL[2]
 
 	//Not sure what to do with ecosystem as of now
 	return uri
