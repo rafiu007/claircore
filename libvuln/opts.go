@@ -174,14 +174,14 @@ func remoteMatchersFunc(o *Opts) error {
 }
 
 func WithParams(params string) string {
-	c := strings.Split(params, " ")
-	tempURl := strings.Split(c[0], "=")
-	url := tempURl[1] + tempURl[2]
+	splitParams := strings.Split(params, " ")
+	splitURl := strings.Split(splitParams[0], "=")
+	uri := splitURl[1] + splitURl[2]
 
 	//Not sure what to do with ecosystem as of now
 	//tempEcosystem := strings.Split(c[1], "=")
 	//ecosystem := tempEcosystem[1]
-	return url
+	return uri
 }
 
 // UpdaterSetFunc returns the configured UpdaterSetFactories.
