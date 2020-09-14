@@ -1,6 +1,7 @@
 package libvuln
 
 import (
+	"claircore/matcher"
 	"context"
 	"database/sql"
 	"fmt"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/quay/claircore/alpine"
 	"github.com/quay/claircore/aws"
-	"github.com/quay/claircore/crda"
 	"github.com/quay/claircore/debian"
 	"github.com/quay/claircore/libvuln/driver"
 	"github.com/quay/claircore/libvuln/migrations"
@@ -160,16 +160,31 @@ func (o *Opts) parse(ctx context.Context) error {
 	return nil
 }
 
-func remoteMatchersFunc(o *Opts) error {
-	for _, m := range o.RemoteMatchers {
-		if m["name"] == "crda" {
-			m, err := crda.NewMatcher(crda.WithParams(m["params"]))
-			if err == nil {
-				o.Matchers = append(o.Matchers, m)
+func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ([]driver.MatcherSetFactory, error) {
+	log = log.With().
+		Str("component", "libvuln/updaterSets").
+		Logger()
+
+	defaults := matcher.Registered()
+
+	if o.RemoteMatchers != nil {
+		for name := range defaults {
+			rm := true
+			for _, wanted := range o.RemoteMatchers {
+				if name == wanted["name"] {
+					rm = false
+				}
+			}
+			if rm {
+				delete(defaults, name)
 			}
 		}
 	}
-	return nil
+	if err := updater.Configure(ctx, defaults, o.UpdaterConfigs, o.Client); err != nil {
+		return nil, err
+	}
+
+	return fs, nil
 }
 
 // UpdaterSetFunc returns the configured UpdaterSetFactories.
