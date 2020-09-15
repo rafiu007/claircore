@@ -12,7 +12,7 @@ func MatcherSet(_ context.Context) (driver.MatcherSet, error) {
 	url := "sjhsdksjdkjsjksjd"
 	py, err := NewMatcher(WithParams(url))
 	if err != nil {
-		return us, fmt.Errorf("failed to create pyupio updater: %v", err)
+		return us, fmt.Errorf("failed to create crda matcher: %v", err)
 	}
 	err = us.Add(py)
 	if err != nil {

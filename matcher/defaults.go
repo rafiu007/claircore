@@ -4,7 +4,6 @@
 package matcher
 
 import (
-	"claircore/updater"
 	"context"
 	"sync"
 	"time"
@@ -32,7 +31,7 @@ func MatcherError() error {
 
 func inner(ctx context.Context) error {
 
-	updater.Register("crda", driver.MatcherSetFactoryFunc(crda.MatcherSet))
+	Register("crda", driver.MatcherSetFactoryFunc(crda.MatcherSet))
 
 	return nil
 }

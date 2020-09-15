@@ -33,7 +33,7 @@ func Register(name string, f driver.MatcherSetFactory) {
 	pkg.fs[name] = f
 }
 
-// Registered returns a new map populated with the registered Matcher	SetFactories.
+// Registered returns a new map populated with the registered MatcherSetFactories.
 func Registered() map[string]driver.MatcherSetFactory {
 	pkg.Lock()
 	defer pkg.Unlock()

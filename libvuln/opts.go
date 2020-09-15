@@ -146,9 +146,9 @@ func (o *Opts) parse(ctx context.Context) error {
 	/*if m, err := crda.NewMatcher(); err == nil {
 		o.Matchers = append(o.Matchers, m)
 	}*/
-	if o.RemoteMatchers != nil {
-		remoteMatchersFunc(o)
-	}
+	/*if len(o.RemoteMatchers) != 0 {
+		matcherSetFunc(ctx context, log zerolog.Logger)
+	}*/
 
 	if o.Client == nil {
 		o.Client = http.DefaultClient
@@ -167,7 +167,7 @@ func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ([]driver
 
 	defaults := matcher.Registered()
 
-	if o.RemoteMatchers != nil {
+	if len(o.RemoteMatchers) != 0 {
 		for name := range defaults {
 			rm := true
 			for _, wanted := range o.RemoteMatchers {
@@ -179,11 +179,21 @@ func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ([]driver
 				delete(defaults, name)
 			}
 		}
-	}
-	if err := updater.Configure(ctx, defaults, o.UpdaterConfigs, o.Client); err != nil {
-		return nil, err
+	} else {
+		for name := range defaults {
+			delete(defaults, name)
+
+		}
 	}
 
+	//if err := matcher.Configure(ctx, defaults, o.UpdaterConfigs, o.Client); err != nil {
+	//	return nil, err
+	//}
+
+	//Need to add code here to merge with o.Matchers
+	for name := range defaults {
+
+	}
 	return fs, nil
 }
 
