@@ -43,6 +43,11 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 		return nil, err
 	}
 
+	err := opts.updaterSetFunc(ctx, log)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Info().
 		Int32("count", opts.MaxConnPool).
 		Msg("initializing store")

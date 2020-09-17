@@ -95,7 +95,9 @@ type Opts struct {
 	Client *http.Client
 
 	//Contains configurabele details for the remote matcher
-	RemoteMatchers []map[string]string
+	RemoteMatcherSets []string
+
+	RemoteMatcherconfigs map[string]driver.MatcherConfigUnmarshaler
 }
 
 // defaultMatchers is a variable containing
@@ -160,18 +162,18 @@ func (o *Opts) parse(ctx context.Context) error {
 	return nil
 }
 
-func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ([]driver.MatcherSetFactory, error) {
+func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ( error) {
 	log = log.With().
 		Str("component", "libvuln/updaterSets").
 		Logger()
 
 	defaults := matcher.Registered()
 
-	if len(o.RemoteMatchers) != 0 {
+	if len(o.RemoteMatcherSets) != 0 {
 		for name := range defaults {
 			rm := true
-			for _, wanted := range o.RemoteMatchers {
-				if name == wanted["name"] {
+			for _, wanted := range o.RemoteMatcherSets {
+				if name == wanted {
 					rm = false
 				}
 			}
@@ -186,15 +188,18 @@ func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ([]driver
 		}
 	}
 
-	//if err := matcher.Configure(ctx, defaults, o.UpdaterConfigs, o.Client); err != nil {
-	//	return nil, err
-	//}
-
-	//Need to add code here to merge with o.Matchers
-	for name := range defaults {
-
+	err := matcher.Configure(ctx, defaults, o.RemoteMatcherConfigs, o.Client); err != nil {
+		return nil, err
 	}
-	return fs, nil
+
+
+	for _,f := defaults {
+		for _,m:= f.Matchers() {
+			o.Matchers = append(o.Matchers, m)
+		}
+	}
+
+	return nil
 }
 
 // UpdaterSetFunc returns the configured UpdaterSetFactories.

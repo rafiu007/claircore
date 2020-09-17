@@ -46,7 +46,7 @@ func Registered() map[string]driver.MatcherSetFactory {
 
 // Configure calls the Configure method on all the passed-in
 // UpdaterSetFactories.
-func Configure(ctx context.Context, fs map[string]driver.MatcherSetFactory, cfg map[string]driver.ConfigUnmarshaler, c *http.Client) error {
+func Configure(ctx context.Context, fs map[string]driver.MatcherSetFactory, cfg map[string]driver.MatcherConfigUnmarshaler, c *http.Client) error {
 	errd := false
 	var b strings.Builder
 	b.WriteString("updater: errors configuring factories:")

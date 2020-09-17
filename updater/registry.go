@@ -55,7 +55,7 @@ func Configure(ctx context.Context, fs map[string]driver.UpdaterSetFactory, cfg 
 	}
 
 	for name, fac := range fs {
-		f, fOK := fac.(driver.Configurable)
+		f, fOK := fac.(driver.ConfigurableMatcher)
 		cf, cfOK := cfg[name]
 		if fOK && cfOK {
 			if err := f.Configure(ctx, cf, c); err != nil {
