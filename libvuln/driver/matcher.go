@@ -78,5 +78,5 @@ type MatcherConfigUnmarshaler func(interface{}) error
 // Configurable is an interface that Updaters can implement to opt-in to having
 // their configuration provided dynamically.
 type ConfigurableMatcher interface {
-	Configure(context.Context, ConfigUnmarshaler, *http.Client) error
+	ConfigureMatcher(context.Context, MatcherConfigUnmarshaler, *http.Client) error
 }

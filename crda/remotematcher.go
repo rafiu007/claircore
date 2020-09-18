@@ -62,15 +62,14 @@ type VulnReport struct {
 type Option func(*Matcher) error
 
 // NewMatcher returns a configured Matcher or reports an error.
-func NewMatcher(uri string, opt ...Option) (*Matcher, error) {
+func NewMatcher(opt ...Option) (*Matcher, error) {
 	m := Matcher{}
 	for _, f := range opt {
 		if err := f(&m); err != nil {
 			return nil, err
 		}
 	}
-	//Checking the uri and populating the matcher with it
-	WithURL(uri)
+
 	if m.url == nil {
 		var err error
 		m.url, err = url.Parse(defaultURL)

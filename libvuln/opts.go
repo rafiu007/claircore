@@ -1,13 +1,14 @@
 package libvuln
 
 import (
-	"claircore/matcher"
 	"context"
 	"database/sql"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/quay/claircore/matcher"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -97,7 +98,7 @@ type Opts struct {
 	//Contains configurabele details for the remote matcher
 	RemoteMatcherSets []string
 
-	RemoteMatcherconfigs map[string]driver.MatcherConfigUnmarshaler
+	RemoteMatcherConfigs map[string]driver.MatcherConfigUnmarshaler
 }
 
 // defaultMatchers is a variable containing
@@ -162,7 +163,7 @@ func (o *Opts) parse(ctx context.Context) error {
 	return nil
 }
 
-func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ( error) {
+func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) error {
 	log = log.With().
 		Str("component", "libvuln/updaterSets").
 		Logger()
@@ -188,13 +189,18 @@ func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) ( error) 
 		}
 	}
 
-	err := matcher.Configure(ctx, defaults, o.RemoteMatcherConfigs, o.Client); err != nil {
-		return nil, err
+	err := matcher.Configure(ctx, defaults, o.RemoteMatcherConfigs, o.Client)
+	if err != nil {
+		return err
 	}
 
-
-	for _,f := defaults {
-		for _,m:= f.Matchers() {
+	for _, f := range defaults {
+		ms, err := f.MatcherSet(ctx)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed crreating matchers")
+		}
+		//Do I need to configure them here as well ?
+		for _, m := range ms.Matchers() {
 			o.Matchers = append(o.Matchers, m)
 		}
 	}

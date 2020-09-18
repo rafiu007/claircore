@@ -19,7 +19,7 @@ type FactoryConfig struct {
 	URL string `json:"url", yaml:"url"`
 }
 
-func (f *Factory) Configure(ctx context.Context, cfg driver.MatcherConfigUnmarshaler, c *http.Client) error {
+func (f *Factory) ConfigureMatcher(ctx context.Context, cfg driver.MatcherConfigUnmarshaler, c *http.Client) error {
 	log := zerolog.Ctx(ctx).With().
 		Str("component", "crda/Factory.Configure").
 		Logger()
@@ -52,7 +52,6 @@ func (f *Factory) Configure(ctx context.Context, cfg driver.MatcherConfigUnmarsh
 
 func MatcherSet(_ context.Context) (driver.MatcherSet, error) {
 	us := driver.NewMatcherSet()
-	url := "sjhsdksjdkjsjksjd"
 	py, err := NewMatcher()
 	if err != nil {
 		return us, fmt.Errorf("failed to create crda matcher: %v", err)

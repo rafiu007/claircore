@@ -43,9 +43,9 @@ func New(ctx context.Context, opts *Opts) (*Libvuln, error) {
 		return nil, err
 	}
 
-	err := opts.updaterSetFunc(ctx, log)
-	if err != nil {
-		return nil, err
+	errs := opts.matcherSetFunc(ctx, log)
+	if errs != nil {
+		return nil, errs
 	}
 
 	log.Info().

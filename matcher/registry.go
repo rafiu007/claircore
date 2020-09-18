@@ -1,4 +1,4 @@
-// Package updater holds a registry of default updaters.
+// Package matcher holds a registry of default matchers.
 //
 // A set of in-tree updaters can be added by using the defaults package's Set
 // function.
@@ -21,7 +21,7 @@ var pkg = struct {
 	fs: make(map[string]driver.MatcherSetFactory),
 }
 
-// Register registers an UpdaterSetFactory.
+// Register registers an MatcherSetFactory.
 //
 // Register will panic if the same name is used twice.
 func Register(name string, f driver.MatcherSetFactory) {
@@ -45,7 +45,7 @@ func Registered() map[string]driver.MatcherSetFactory {
 }
 
 // Configure calls the Configure method on all the passed-in
-// UpdaterSetFactories.
+// MatcherSetFactories.
 func Configure(ctx context.Context, fs map[string]driver.MatcherSetFactory, cfg map[string]driver.MatcherConfigUnmarshaler, c *http.Client) error {
 	errd := false
 	var b strings.Builder
@@ -55,10 +55,10 @@ func Configure(ctx context.Context, fs map[string]driver.MatcherSetFactory, cfg 
 	}
 
 	for name, fac := range fs {
-		f, fOK := fac.(driver.Configurable)
+		f, fOK := fac.(driver.ConfigurableMatcher)
 		cf, cfOK := cfg[name]
 		if fOK && cfOK {
-			if err := f.Configure(ctx, cf, c); err != nil {
+			if err := f.ConfigureMatcher(ctx, cf, c); err != nil {
 				errd = true
 				b.WriteString("\n\t")
 				b.WriteString(err.Error())
