@@ -1,16 +1,16 @@
-package crda_test
+package crda
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/quay/claircore"
-	"github.com/quay/claircore/crda"
 )
 
 var (
@@ -19,40 +19,6 @@ var (
 		URI:  "https://python.org",
 	}
 )
-
-func checkVulnerabilitiesAreEqual(t *testing.T, expected []*claircore.Vulnerability, got []*claircore.Vulnerability) {
-	if len(expected) != len(got) {
-		t.Errorf("len %d != %d", len(expected), len(got))
-		return
-	}
-
-	for i, expected := range expected {
-		if *expected.Package != *got[i].Package {
-			t.Errorf("Package %#v != %#v", expected.Package, got[i].Package)
-		}
-		if expected.Repo != nil && *expected.Repo != *got[i].Repo {
-			t.Errorf("Repo %#v != %#v", expected.Repo, got[i].Repo)
-		}
-		if got[i].ID == "" {
-			t.Errorf("ID must be a valid string")
-		}
-		if got[i].Description == "" {
-			t.Errorf("Description must be a valid string")
-		}
-		if got[i].Updater != "CodeReadyAnalytics" {
-			t.Errorf("Updater CodeReadyAnalytics != %s", got[i].Updater)
-		}
-		if got[i].Severity == "" {
-			t.Errorf("Severity must be a valid string")
-		}
-		if got[i].NormalizedSeverity == 0 {
-			t.Errorf("NormalizedSeverity must be valid")
-		}
-		if _, err := url.Parse(got[i].Links); err != nil {
-			t.Errorf("URL is invalid %s, err %s", got[i].Links, err)
-		}
-	}
-}
 
 func (tc matcherTestcase) Run(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -67,7 +33,9 @@ func (tc matcherTestcase) Run(t *testing.T) {
 		if !ok {
 			t.Errorf("Expected key %s not found", k)
 		}
-		checkVulnerabilitiesAreEqual(t, expectedVulns, got)
+		if diff := cmp.Diff(expectedVulns, got); diff != "" {
+			t.Errorf("Vuln mismatch (-want, +got):\n%s", diff)
+		}
 	}
 }
 
@@ -75,11 +43,11 @@ type matcherTestcase struct {
 	Name     string
 	R        []*claircore.IndexRecord
 	Expected map[string][]*claircore.Vulnerability
-	Matcher  *crda.Matcher
+	Matcher  *Matcher
 }
 
-func newMatcher(t *testing.T, srv *httptest.Server, repo *claircore.Repository) *crda.Matcher {
-	m, err := crda.NewMatcher(crda.WithClient(srv.Client()), crda.WithURL(srv.URL), crda.WithRepo(repo))
+func newMatcher(t *testing.T, srv *httptest.Server, repo *claircore.Repository) *Matcher {
+	m, err := NewMatcher(WithClient(srv.Client()), WithURL(srv.URL), WithRepo(repo))
 	if err != nil {
 		t.Errorf("there should be no err %v", err)
 	}
@@ -124,12 +92,20 @@ func TestRemoteMatcher(t *testing.T) {
 			Expected: map[string][]*claircore.Vulnerability{
 				"pyyaml": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-PYYAML-559098",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-PYYAML-559098",
+						Description:        "Arbitrary Code Execution",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-PYYAML-559098",
+						Severity:           "critical",
+						NormalizedSeverity: claircore.Critical,
 						Package: &claircore.Package{
 							ID:      "pyyaml",
 							Name:    "pyyaml",
 							Version: "5.3",
 						},
-						Repo: &pypiRepo,
+						Repo:           &pypiRepo,
+						FixedInVersion: "5.3.1",
 					},
 				},
 			},
@@ -177,27 +153,54 @@ func TestRemoteMatcher(t *testing.T) {
 			Expected: map[string][]*claircore.Vulnerability{
 				"pyyaml": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-PYYAML-559098",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-PYYAML-559098",
+						Description:        "Arbitrary Code Execution",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-PYYAML-559098",
+						Severity:           "critical",
+						NormalizedSeverity: claircore.Critical,
 						Package: &claircore.Package{
 							ID:      "pyyaml",
 							Name:    "pyyaml",
 							Version: "5.3",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "5.3.1",
 					},
 				},
 				"flask": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-FLASK-42185",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-FLASK-42185",
+						Description:        "Improper Input Validation",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-FLASK-42185",
+						Severity:           "high",
+						NormalizedSeverity: claircore.High,
 						Package: &claircore.Package{
 							ID:      "flask",
 							Name:    "flask",
 							Version: "0.12",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "0.12.3",
 					},
 					{
+						ID:                 "SNYK-PYTHON-FLASK-42185-xx",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-FLASK-42185-xx",
+						Description:        "Improper Input Validation",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-FLASK-42185",
+						Severity:           "high",
+						NormalizedSeverity: claircore.High,
 						Package: &claircore.Package{
 							ID:      "flask",
 							Name:    "flask",
 							Version: "0.12",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "0.12.3, 0.12.4",
 					},
 				},
 			},
