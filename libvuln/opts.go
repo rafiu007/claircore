@@ -16,7 +16,6 @@ import (
 
 	"github.com/quay/claircore/alpine"
 	"github.com/quay/claircore/aws"
-	"github.com/quay/claircore/crda"
 	"github.com/quay/claircore/debian"
 	"github.com/quay/claircore/libvuln/driver"
 	"github.com/quay/claircore/libvuln/migrations"
@@ -139,10 +138,6 @@ func (o *Opts) parse(ctx context.Context) error {
 
 	// merge default matchers with any out-of-tree specified
 	o.Matchers = append(o.Matchers, defaultMatchers...)
-
-	if m, err := crda.NewMatcher(); err == nil {
-		o.Matchers = append(o.Matchers, m)
-	}
 
 	if o.Client == nil {
 		o.Client = http.DefaultClient
