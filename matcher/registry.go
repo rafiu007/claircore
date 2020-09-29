@@ -49,7 +49,7 @@ func Registered() map[string]driver.MatcherSetFactory {
 func Configure(ctx context.Context, fs map[string]driver.MatcherSetFactory, cfg map[string]driver.MatcherConfigUnmarshaler, c *http.Client) error {
 	errd := false
 	var b strings.Builder
-	b.WriteString("updater: errors configuring factories:")
+	b.WriteString("matchers: errors configuring factories:")
 	if c == nil {
 		c = http.DefaultClient
 	}
