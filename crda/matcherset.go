@@ -4,14 +4,30 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/quay/claircore/libvuln/driver"
 	"github.com/rs/zerolog"
 )
 
+const URL = "https://f8a-analytics-preview-2445582058137.production.gw.apicast.io/?user_key=3e42fa66f65124e6b1266a23431e3d08"
+
+func NewFactory(ctx context.Context, opts ...FactoryOption) (*Factory, error) {
+	f := Factory{
+		client: http.DefaultClient,
+	}
+
+	f.url = URL
+
+	for _, o := range opts {
+		if err := o(&f); err != nil {
+			return nil, err
+		}
+	}
+	return &f, nil
+}
+
 type Factory struct {
-	url    *url.URL
+	url    string
 	client *http.Client
 }
 
@@ -31,14 +47,10 @@ func (f *Factory) ConfigureMatcher(ctx context.Context, cfg driver.MatcherConfig
 	log.Debug().Msg("loaded incoming config")
 
 	if fc.URL != "" {
-		u, err := url.Parse(fc.URL)
-		if err != nil {
-			return err
-		}
 		log.Info().
-			Str("url", u.String()).
+			Str("url", fc.URL).
 			Msg("configured manifest URL")
-		f.url = u
+		f.url = fc.URL
 	}
 
 	if c != nil {
@@ -50,9 +62,9 @@ func (f *Factory) ConfigureMatcher(ctx context.Context, cfg driver.MatcherConfig
 	return nil
 }
 
-func MatcherSet(_ context.Context) (driver.MatcherSet, error) {
+func (f *Factory) MatcherSet(_ context.Context) (driver.MatcherSet, error) {
 	us := driver.NewMatcherSet()
-	py, err := NewMatcher()
+	py, err := NewMatcher(WithURL(f.url), WithClient(f.client))
 	if err != nil {
 		return us, fmt.Errorf("failed to create crda matcher: %v", err)
 	}
@@ -62,3 +74,6 @@ func MatcherSet(_ context.Context) (driver.MatcherSet, error) {
 	}
 	return us, nil
 }
+
+// A FactoryOption is used with New to configure a Factory.
+type FactoryOption func(*Factory) error

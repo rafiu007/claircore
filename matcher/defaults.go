@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/quay/claircore/crda"
-	"github.com/quay/claircore/libvuln/driver"
 )
 
 var (
@@ -31,7 +30,12 @@ func MatcherError() error {
 
 func inner(ctx context.Context) error {
 
-	Register("crda", driver.MatcherSetFactoryFunc(crda.MatcherSet))
+	//Register crda
+	rf, err := crda.NewFactory(ctx)
+	if err != nil {
+		return err
+	}
+	Register("crda", rf)
 
 	return nil
 }
