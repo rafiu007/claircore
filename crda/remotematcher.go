@@ -21,6 +21,11 @@ import (
 var (
 	_ driver.Matcher       = (*Matcher)(nil)
 	_ driver.RemoteMatcher = (*Matcher)(nil)
+
+	defaultRepo = claircore.Repository{
+		Name: "pypi",
+		URI:  "https://pypi.org/simple",
+	}
 )
 
 const (
@@ -34,6 +39,7 @@ const (
 type Matcher struct {
 	client *http.Client
 	url    *url.URL
+	repo   *claircore.Repository
 }
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
@@ -80,6 +86,9 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 	if m.client == nil {
 		m.client = http.DefaultClient
 	}
+	if m.repo == nil {
+		m.repo = &defaultRepo
+	}
 
 	return &m, nil
 }
@@ -118,6 +127,17 @@ func WithURL(uri string) Option {
 	}
 }
 
+// WithRepo sets the repository information that will be associated with all the
+// vulnerabilites found.
+//
+// If not passed to NewMatcher, a default Repository will be used.
+func WithRepo(r *claircore.Repository) Option {
+	return func(m *Matcher) error {
+		m.repo = r
+		return nil
+	}
+}
+
 // Name implements driver.Matcher.
 func (*Matcher) Name() string { return "crda" }
 
@@ -151,7 +171,7 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	results := make(map[string][]*claircore.Vulnerability)
 	for r := range ctrlC {
 		for _, vuln := range r {
-			results[vuln.Package.ID] = append(results[vuln.Package.ID], &vuln)
+			results[vuln.Package.ID] = append(results[vuln.Package.ID], vuln)
 			log.Debug().
 				Str("package", vuln.Package.Name).
 				Str("version", vuln.Package.Version).
@@ -173,9 +193,9 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	return results, nil
 }
 
-func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (chan []claircore.Vulnerability, chan error) {
+func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (chan []*claircore.Vulnerability, chan error) {
 	inC := make(chan *claircore.IndexRecord, concurrencyLimit)
-	ctrlC := make(chan []claircore.Vulnerability, concurrencyLimit)
+	ctrlC := make(chan []*claircore.Vulnerability, concurrencyLimit)
 	errorC := make(chan error, 1)
 	go func() {
 		defer close(ctrlC)
@@ -200,7 +220,7 @@ func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore
 	return ctrlC, errorC
 }
 
-func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]claircore.Vulnerability, error) {
+func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.IndexRecord) ([]*claircore.Vulnerability, error) {
 	reqUrl := url.URL{
 		Scheme:   m.url.Scheme,
 		Host:     m.url.Host,
@@ -234,18 +254,19 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 			return nil, err
 		}
 		// A package can have 0 or more vulnerabilities for a version.
-		var vulns []claircore.Vulnerability
+		var vulns []*claircore.Vulnerability
 		for _, vuln := range vulnReport.Analyses.Vulnerabilities {
-			vulns = append(vulns, claircore.Vulnerability{
+			vulns = append(vulns, &claircore.Vulnerability{
 				ID:                 vuln.ID,
 				Updater:            "CodeReadyAnalytics",
 				Name:               vuln.ID,
-				Description:        fmt.Sprintf("%s(cvss: %s)(cves: %s)\n%s", vuln.Title, vuln.CVSS, strings.Join(vuln.CVES, ","), vulnReport.Message),
+				Description:        vuln.Title,
 				Links:              vuln.URL,
 				Severity:           vuln.Severity,
 				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
-				FixedInVersion:     strings.Join(vuln.FixedIn, ","),
+				FixedInVersion:     strings.Join(vuln.FixedIn, ", "),
 				Package:            record.Package,
+				Repo:               m.repo,
 			})
 		}
 		return vulns, nil

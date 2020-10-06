@@ -146,13 +146,6 @@ func (o *Opts) parse(ctx context.Context) error {
 	// merge default matchers with any out-of-tree specified
 	o.Matchers = append(o.Matchers, defaultMatchers...)
 
-	/*if m, err := crda.NewMatcher(); err == nil {
-		o.Matchers = append(o.Matchers, m)
-	}*/
-	/*if len(o.RemoteMatchers) != 0 {
-		matcherSetFunc(ctx context, log zerolog.Logger)
-	}*/
-
 	if o.Client == nil {
 		o.Client = http.DefaultClient
 	}

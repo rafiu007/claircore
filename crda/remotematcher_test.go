@@ -1,54 +1,24 @@
-package crda_test
+package crda
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/quay/claircore"
-	"github.com/quay/claircore/crda"
 )
 
-func checkVulnerabilitiesAreEqual(t *testing.T, expected []*claircore.Vulnerability, got []*claircore.Vulnerability) {
-	if len(expected) != len(got) {
-		t.Errorf("len %d != %d", len(expected), len(got))
-		return
+var (
+	pypiRepo = claircore.Repository{
+		Name: "python",
+		URI:  "https://python.org",
 	}
-
-	for i, expected := range expected {
-		if expected.Package.ID != got[i].Package.ID {
-			t.Errorf("Package.ID %s != %s", expected.Package.ID, got[i].Package.ID)
-		}
-		if expected.Package.Name != got[i].Package.Name {
-			t.Errorf("Package.Name %s != %s", expected.Package.Name, got[i].Package.Name)
-		}
-		if expected.Package.Version != got[i].Package.Version {
-			t.Errorf("Package.Version %s != %s", expected.Package.Version, got[i].Package.Version)
-		}
-		if got[i].ID == "" {
-			t.Errorf("ID must be a valid string")
-		}
-		if got[i].Description == "" {
-			t.Errorf("Description must be a valid string")
-		}
-		if strings.Compare(got[i].Updater, "CodeReadyAnalytics") != 0 {
-			t.Errorf("Updater CodeReadyAnalytics != %s", got[i].Updater)
-		}
-		if got[i].Severity == "" {
-			t.Errorf("Severity must be a valid string")
-		}
-		if got[i].NormalizedSeverity == 0 {
-			t.Errorf("NormalizedSeverity must be valid")
-		}
-		if _, err := url.Parse(got[i].Links); err != nil {
-			t.Errorf("URL is invalid %s, err %s", got[i].Links, err)
-		}
-	}
-}
+)
 
 func (tc matcherTestcase) Run(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,7 +33,9 @@ func (tc matcherTestcase) Run(t *testing.T) {
 		if !ok {
 			t.Errorf("Expected key %s not found", k)
 		}
-		checkVulnerabilitiesAreEqual(t, expectedVulns, got)
+		if diff := cmp.Diff(expectedVulns, got); diff != "" {
+			t.Errorf("Vuln mismatch (-want, +got):\n%s", diff)
+		}
 	}
 }
 
@@ -71,11 +43,11 @@ type matcherTestcase struct {
 	Name     string
 	R        []*claircore.IndexRecord
 	Expected map[string][]*claircore.Vulnerability
-	Matcher  *crda.Matcher
+	Matcher  *Matcher
 }
 
-func newMatcher(t *testing.T, srv *httptest.Server) *crda.Matcher {
-	m, err := crda.NewMatcher(crda.WithClient(srv.Client()), crda.WithURL(srv.URL))
+func newMatcher(t *testing.T, srv *httptest.Server, repo *claircore.Repository) *Matcher {
+	m, err := NewMatcher(WithClient(srv.Client()), WithURL(srv.URL), WithRepo(repo))
 	if err != nil {
 		t.Errorf("there should be no err %v", err)
 	}
@@ -97,7 +69,7 @@ func TestRemoteMatcher(t *testing.T) {
 			Name:     "pypi/empty",
 			R:        []*claircore.IndexRecord{},
 			Expected: map[string][]*claircore.Vulnerability{},
-			Matcher:  newMatcher(t, srv),
+			Matcher:  newMatcher(t, srv, &pypiRepo),
 		},
 		{
 			Name: "pypi/{pyyaml-vuln,flask-novuln}",
@@ -120,15 +92,24 @@ func TestRemoteMatcher(t *testing.T) {
 			Expected: map[string][]*claircore.Vulnerability{
 				"pyyaml": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-PYYAML-559098",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-PYYAML-559098",
+						Description:        "Arbitrary Code Execution",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-PYYAML-559098",
+						Severity:           "critical",
+						NormalizedSeverity: claircore.Critical,
 						Package: &claircore.Package{
 							ID:      "pyyaml",
 							Name:    "pyyaml",
 							Version: "5.3",
 						},
+						Repo:           &pypiRepo,
+						FixedInVersion: "5.3.1",
 					},
 				},
 			},
-			Matcher: newMatcher(t, srv),
+			Matcher: newMatcher(t, srv, &pypiRepo),
 		},
 		{
 			Name: "pypi/{pyyaml-novuln,flask-novuln}",
@@ -149,7 +130,7 @@ func TestRemoteMatcher(t *testing.T) {
 				},
 			},
 			Expected: map[string][]*claircore.Vulnerability{},
-			Matcher:  newMatcher(t, srv),
+			Matcher:  newMatcher(t, srv, nil),
 		},
 		{
 			Name: "pypi/{pyyaml-vuln,flask-vuln}",
@@ -172,31 +153,58 @@ func TestRemoteMatcher(t *testing.T) {
 			Expected: map[string][]*claircore.Vulnerability{
 				"pyyaml": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-PYYAML-559098",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-PYYAML-559098",
+						Description:        "Arbitrary Code Execution",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-PYYAML-559098",
+						Severity:           "critical",
+						NormalizedSeverity: claircore.Critical,
 						Package: &claircore.Package{
 							ID:      "pyyaml",
 							Name:    "pyyaml",
 							Version: "5.3",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "5.3.1",
 					},
 				},
 				"flask": []*claircore.Vulnerability{
 					{
+						ID:                 "SNYK-PYTHON-FLASK-42185",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-FLASK-42185",
+						Description:        "Improper Input Validation",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-FLASK-42185",
+						Severity:           "high",
+						NormalizedSeverity: claircore.High,
 						Package: &claircore.Package{
 							ID:      "flask",
 							Name:    "flask",
 							Version: "0.12",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "0.12.3",
 					},
 					{
+						ID:                 "SNYK-PYTHON-FLASK-42185-xx",
+						Updater:            "CodeReadyAnalytics",
+						Name:               "SNYK-PYTHON-FLASK-42185-xx",
+						Description:        "Improper Input Validation",
+						Links:              "https://snyk.io/vuln/SNYK-PYTHON-FLASK-42185",
+						Severity:           "high",
+						NormalizedSeverity: claircore.High,
 						Package: &claircore.Package{
 							ID:      "flask",
 							Name:    "flask",
 							Version: "0.12",
 						},
+						Repo:           &defaultRepo,
+						FixedInVersion: "0.12.3, 0.12.4",
 					},
 				},
 			},
-			Matcher: newMatcher(t, srv),
+			Matcher: newMatcher(t, srv, nil),
 		}}
 	for _, tc := range tt {
 		t.Run(tc.Name, tc.Run)
