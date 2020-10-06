@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/quay/claircore/matcher"
-
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/jackc/pgx/v4/stdlib"
@@ -21,6 +19,7 @@ import (
 	"github.com/quay/claircore/debian"
 	"github.com/quay/claircore/libvuln/driver"
 	"github.com/quay/claircore/libvuln/migrations"
+	"github.com/quay/claircore/matcher"
 	"github.com/quay/claircore/oracle"
 	"github.com/quay/claircore/photon"
 	"github.com/quay/claircore/python"
@@ -192,7 +191,7 @@ func (o *Opts) matcherSetFunc(ctx context.Context, log zerolog.Logger) error {
 		if err != nil {
 			log.Warn().Err(err).Msg("failed crreating matchers")
 		}
-		//Do I need to configure them here as well ?
+
 		for _, m := range ms.Matchers() {
 			o.Matchers = append(o.Matchers, m)
 		}

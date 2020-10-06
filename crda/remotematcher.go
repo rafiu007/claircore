@@ -93,16 +93,6 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 	return &m, nil
 }
 
-// WithParams parses the Params string and returns a url for remote matcher.
-func WithParams(params string) string {
-	splitParams := strings.Split(params, " ")
-	splitURL := strings.Split(splitParams[0], "=")
-	uri := splitURL[1] + splitURL[2]
-
-	//Not sure what to do with ecosystem as of now
-	return uri
-}
-
 // WithClient sets the http.Client that the matcher should use for requests.
 //
 // If not passed to NewMatcher, http.DefaultClient will be used.
