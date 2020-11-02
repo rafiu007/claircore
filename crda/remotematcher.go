@@ -159,13 +159,10 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 			results[vuln.Package.ID] = append(results[vuln.Package.ID], vuln)
 		}
 	}
-	select {
-	case err := <-errorC: // guaranteed to have an err or be closed
-		// Don't propagate error, log and move on.
-		if err != nil {
-			log.Error().Err(err).Msg("call to component analyses has failed")
-		}
-	default:
+	err := <-errorC // guaranteed to have an err or be closed.
+	// Don't propagate error, log and move on.
+	if err != nil {
+		log.Error().Err(err).Msg("call to component analyses has failed")
 	}
 	log.Debug().
 		Int("vulnerabilities", len(results)).
@@ -217,8 +214,8 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 		ProtoMinor: 1,
 		Host:       reqUrl.Host,
 	}
-	// A request shouldn't go beyound 10s.
-	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// A request shouldn't go beyound 5s.
+	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	res, err := m.client.Do(req.WithContext(tctx))
 	if res != nil {
