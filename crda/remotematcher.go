@@ -25,7 +25,8 @@ var (
 const (
 	// Bounded concurrency limit.
 	defaultRequestConcurrency = 10
-	defaultURL                = "https://f8a-analytics-preview-2445582058137.production.gw.apicast.io/?user_key=3e42fa66f65124e6b1266a23431e3d08"
+	defaultURL                = "https://f8a-analytics-2445582058137.production.gw.apicast.io/?user_key=9e7da76708fe374d8c10fa752e72989f"
+	defaultPath               = "/api/v2/component-analyses/pypi/%s/%s"
 )
 
 // Matcher attempts to correlate discovered python packages with reported
@@ -156,18 +157,13 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	for r := range ctrlC {
 		for _, vuln := range r {
 			results[vuln.Package.ID] = append(results[vuln.Package.ID], vuln)
-			log.Debug().
-				Str("package", vuln.Package.Name).
-				Str("version", vuln.Package.Version).
-				Str("id", vuln.ID).
-				Msg("vulns")
 		}
 	}
 	select {
-	case err, ok := <-errorC:
+	case err := <-errorC: // guaranteed to have an err or be closed
 		// Don't propagate error, log and move on.
-		if ok {
-			log.Error().Err(err).Msg("access to component analyses failed")
+		if err != nil {
+			log.Error().Err(err).Msg("call to component analyses has failed")
 		}
 	default:
 	}
@@ -182,8 +178,8 @@ func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore
 	ctrlC := make(chan []*claircore.Vulnerability, m.requestConcurrency)
 	errorC := make(chan error, 1)
 	go func() {
-		defer close(ctrlC)
 		defer close(errorC)
+		defer close(ctrlC)
 		var g errgroup.Group
 		for _, record := range records {
 			g.Go(func() error {
@@ -208,7 +204,7 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 	reqUrl := url.URL{
 		Scheme:   m.url.Scheme,
 		Host:     m.url.Host,
-		Path:     fmt.Sprintf("/api/v2/component-analyses/pypi/%s/%s", record.Package.Name, record.Package.Version),
+		Path:     fmt.Sprintf(defaultPath, record.Package.Name, record.Package.Version),
 		RawQuery: m.url.RawQuery,
 	}
 
