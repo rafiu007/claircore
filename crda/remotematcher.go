@@ -170,7 +170,7 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	return results, nil
 }
 
-func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (chan []*claircore.Vulnerability, chan error) {
+func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (<-chan []*claircore.Vulnerability, <-chan error) {
 	inC := make(chan *claircore.IndexRecord, m.requestConcurrency)
 	ctrlC := make(chan []*claircore.Vulnerability, m.requestConcurrency)
 	errorC := make(chan error, 1)
