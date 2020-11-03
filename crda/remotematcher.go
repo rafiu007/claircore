@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"github.com/rs/zerolog"
 
@@ -21,25 +20,21 @@ import (
 var (
 	_ driver.Matcher       = (*Matcher)(nil)
 	_ driver.RemoteMatcher = (*Matcher)(nil)
-
-	defaultRepo = claircore.Repository{
-		Name: "pypi",
-		URI:  "https://pypi.org/simple",
-	}
 )
 
 const (
 	// Bounded concurrency limit.
-	concurrencyLimit = 10
-	defaultURL       = "https://f8a-analytics-preview-2445582058137.production.gw.apicast.io/?user_key=3e42fa66f65124e6b1266a23431e3d08"
+	defaultRequestConcurrency = 10
+	defaultURL                = "https://f8a-analytics-2445582058137.production.gw.apicast.io/?user_key=9e7da76708fe374d8c10fa752e72989f"
+	defaultPath               = "/api/v2/component-analyses/pypi/%s/%s"
 )
 
 // Matcher attempts to correlate discovered python packages with reported
 // vulnerabilities.
 type Matcher struct {
-	client *http.Client
-	url    *url.URL
-	repo   *claircore.Repository
+	client             *http.Client
+	url                *url.URL
+	requestConcurrency int
 }
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
@@ -86,8 +81,9 @@ func NewMatcher(opt ...Option) (*Matcher, error) {
 	if m.client == nil {
 		m.client = http.DefaultClient
 	}
-	if m.repo == nil {
-		m.repo = &defaultRepo
+	// defaults to a sane concurrency limit.
+	if m.requestConcurrency < 1 {
+		m.requestConcurrency = defaultRequestConcurrency
 	}
 
 	return &m, nil
@@ -117,13 +113,12 @@ func WithURL(uri string) Option {
 	}
 }
 
-// WithRepo sets the repository information that will be associated with all the
-// vulnerabilites found.
+// WithRequestConcurrency sets the concurrency limit for the network calls.
 //
-// If not passed to NewMatcher, a default Repository will be used.
-func WithRepo(r *claircore.Repository) Option {
+// If not passed to NewMatcher, a defaultRequestConcurrency will be used.
+func WithRequestConcurrency(requestConcurrency int) Option {
 	return func(m *Matcher) error {
-		m.repo = r
+		m.requestConcurrency = requestConcurrency
 		return nil
 	}
 }
@@ -162,20 +157,12 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	for r := range ctrlC {
 		for _, vuln := range r {
 			results[vuln.Package.ID] = append(results[vuln.Package.ID], vuln)
-			log.Debug().
-				Str("package", vuln.Package.Name).
-				Str("version", vuln.Package.Version).
-				Str("id", vuln.ID).
-				Msg("vulns")
 		}
 	}
-	select {
-	case err, ok := <-errorC:
-		// Don't propagate error, log and move on.
-		if ok {
-			log.Error().Err(err).Msg("access to component analyses failed")
-		}
-	default:
+	err := <-errorC // guaranteed to have an err or be closed.
+	// Don't propagate error, log and move on.
+	if err != nil {
+		log.Error().Err(err).Msg("call to component analyses has failed")
 	}
 	log.Debug().
 		Int("vulnerabilities", len(results)).
@@ -183,13 +170,13 @@ func (m *Matcher) QueryRemoteMatcher(ctx context.Context, records []*claircore.I
 	return results, nil
 }
 
-func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (chan []*claircore.Vulnerability, chan error) {
-	inC := make(chan *claircore.IndexRecord, concurrencyLimit)
-	ctrlC := make(chan []*claircore.Vulnerability, concurrencyLimit)
+func (m *Matcher) fetchVulnerabilities(ctx context.Context, records []*claircore.IndexRecord) (<-chan []*claircore.Vulnerability, <-chan error) {
+	inC := make(chan *claircore.IndexRecord, m.requestConcurrency)
+	ctrlC := make(chan []*claircore.Vulnerability, m.requestConcurrency)
 	errorC := make(chan error, 1)
 	go func() {
-		defer close(ctrlC)
 		defer close(errorC)
+		defer close(ctrlC)
 		var g errgroup.Group
 		for _, record := range records {
 			g.Go(func() error {
@@ -214,7 +201,7 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 	reqUrl := url.URL{
 		Scheme:   m.url.Scheme,
 		Host:     m.url.Host,
-		Path:     fmt.Sprintf("/api/v2/component-analyses/pypi/%s/%s", record.Package.Name, record.Package.Version),
+		Path:     fmt.Sprintf(defaultPath, record.Package.Name, record.Package.Version),
 		RawQuery: m.url.RawQuery,
 	}
 
@@ -227,8 +214,8 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 		ProtoMinor: 1,
 		Host:       reqUrl.Host,
 	}
-	// A request shouldn't go beyound 10s.
-	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// A request shouldn't go beyound 5s.
+	tctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	res, err := m.client.Do(req.WithContext(tctx))
 	if res != nil {
@@ -256,7 +243,7 @@ func (m *Matcher) componentAnalyses(ctx context.Context, record *claircore.Index
 				NormalizedSeverity: NormalizeSeverity(vuln.Severity),
 				FixedInVersion:     strings.Join(vuln.FixedIn, ", "),
 				Package:            record.Package,
-				Repo:               m.repo,
+				Repo:               record.Repository,
 			})
 		}
 		return vulns, nil

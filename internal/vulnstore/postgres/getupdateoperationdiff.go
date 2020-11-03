@@ -44,13 +44,15 @@ func getUpdateDiff(ctx context.Context, pool *pgxpool.Pool, prev, cur uuid.UUID)
 		arch_operation,
 		repo_name,
 		repo_key,
-		repo_uri
+		repo_uri,
+		fixed_in_version
 	FROM vuln
 	WHERE
 		vuln.id IN (
 			SELECT vuln AS id FROM uo_vuln JOIN lhs ON (uo_vuln.uo = lhs.id)
 			EXCEPT ALL
-			SELECT vuln AS id FROM uo_vuln JOIN rhs ON (uo_vuln.uo = rhs.id));`
+			SELECT vuln AS id FROM uo_vuln JOIN rhs ON (uo_vuln.uo = rhs.id))
+	LIMIT 500;`
 
 	if cur == uuid.Nil {
 		return nil, errors.New("nil uuid is invalid as \"current\" endpoint")

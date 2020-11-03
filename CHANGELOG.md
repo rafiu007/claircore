@@ -2,8 +2,86 @@
 ## [Unreleased]
 
 
+<a name="v0.1.15"></a>
+## [v0.1.15] - 2020-10-30
+### Alpine
+- [16f63d4](https://github.com/quay/claircore/commit/16f63d40f177ac71b71c164dab0ce79589df5c7c): use new versions, upstream databases
+- [e1f3e1f](https://github.com/quay/claircore/commit/e1f3e1f29405dfe89c4af5de98e7dc1c386c7efc): add new versions
+- [c4367d5](https://github.com/quay/claircore/commit/c4367d5e7b8ef9392920e321984299cbeb51bd1d): fix yaml tag
+### Etc
+- [94aa5f0](https://github.com/quay/claircore/commit/94aa5f0e8acc81d4b20e9064c7b0fae22043190c): update podman yaml
+### Matcher
+- [9b9c113](https://github.com/quay/claircore/commit/9b9c1135c8418759c3fd30686fcf6a5ee423bb42): add apk specific version parser for alpine
+ -  [#254](https://github.com/quay/claircore/issues/254)
+<a name="v0.1.14"></a>
+## [v0.1.14] - 2020-10-26
+### Rpm
+- [04cb53c](https://github.com/quay/claircore/commit/04cb53cd0090dc60cf240ac4dd46db297ee8b18f): fix error handling in WalkFunc
+
+<a name="v0.1.13"></a>
+## [v0.1.13] - 2020-10-19
+### Chore
+- [b194f51](https://github.com/quay/claircore/commit/b194f51623795537a24ebd427346ed97db88c724): v0.1.13 changelog bump
+### Pyupio
+- [6569e25](https://github.com/quay/claircore/commit/6569e25ab26d551c4a2f4c8ddc2e3f57e6a4f9cf): handle database schema change
+
+<a name="v0.1.12"></a>
+## [v0.1.12] - 2020-10-19
+### Chore
+- [fc45b99](https://github.com/quay/claircore/commit/fc45b99bae52292efe0cdd8416934eb237109d5e): v0.1.12 changelog bump
+### Updaters
+- [1fd140d](https://github.com/quay/claircore/commit/1fd140de619ae3c026f2504d4ad0b017142910f4): do not kill loop on error
+
+<a name="v0.1.11"></a>
+## [v0.1.11] - 2020-10-08
+### Chore
+- [a8dd1cd](https://github.com/quay/claircore/commit/a8dd1cdcbbcda141ba4b451360fc9ce99229ce8c): v0.1.11 changelog bump
+### Cicd
+- [9b7d461](https://github.com/quay/claircore/commit/9b7d46143fd75e630c800254a116a4894aabc81b): copy some changes from clair's CI workflows
+### Oval
+- [f33a45d](https://github.com/quay/claircore/commit/f33a45df91d63c10877d1e6fde922166ad25b8e9): check lookup type ([#244](https://github.com/quay/claircore/issues/244))
+ -  [#244](https://github.com/quay/claircore/issues/244)### Repo2cpe
+- [eec2473](https://github.com/quay/claircore/commit/eec247383c5fe5c05cc9947a4f603b26b03de32e): add errorchecking
+
+<a name="v0.1.10"></a>
+## [v0.1.10] - 2020-10-01
+### Affected Manifests
+- [f8f0ff2](https://github.com/quay/claircore/commit/f8f0ff249f69fa812a58dc7c759ebcc04ae2a483): Use mather's Filter() in omnimatcher
+- [aebd3a8](https://github.com/quay/claircore/commit/aebd3a8f5d4479409b283ffb22f8aaad63172e61): Add missing properties into affected manifest query
+### Chore
+- [9ba63f8](https://github.com/quay/claircore/commit/9ba63f8df6aab352e841ed819da53c371e4b0bcc): v0.1.10 changelog bump
+### Cicd
+- [d118d98](https://github.com/quay/claircore/commit/d118d987a5a8c3219d2dc1f87411197d99386c04): force no flags for regexp commit check
+### Postgres
+- [2df1697](https://github.com/quay/claircore/commit/2df1697d6126155e731055d164badeb783fc17b0): remove warning in common case
+### Updater
+- [c6b1bc9](https://github.com/quay/claircore/commit/c6b1bc9c5fd6deef5541979e3af1c5cf3c2e3961): use pointer receiver for errmap methods
+
+<a name="v0.1.9"></a>
+## [v0.1.9] - 2020-09-28
+### Chore
+- [1ecb4be](https://github.com/quay/claircore/commit/1ecb4be8dbcc67c902d3373981d33c3122b1baab): v0.1.9 changelog bump
+### Layerscanner
+- [4a1b872](https://github.com/quay/claircore/commit/4a1b872eeb07b6a66675bfa5bb603eb3d563f8b9): prevent misleading log line
+### Vulnstore
+- [6295f37](https://github.com/quay/claircore/commit/6295f370f5aaca200966187585424da8db4983cf): limit diffs
+
+<a name="v0.1.8"></a>
+## [v0.1.8] - 2020-09-23
+### Chore
+- [ce4f428](https://github.com/quay/claircore/commit/ce4f428faa690ed137acf5fadf33b8bafb5c4d65): v0.1.8 changelog bump
+### Cicd
+- [1566fc5](https://github.com/quay/claircore/commit/1566fc58d4d2659514240c382a1c6f7dc38da194): fix commit check regexp
+### Makefile
+- [1d9b607](https://github.com/quay/claircore/commit/1d9b6071a0bb802314926cf8a0bf482e4421055c): handle SELinux permissions for volume in docker-compose
+### Rpm
+- [d75ba4c](https://github.com/quay/claircore/commit/d75ba4c0e7dedb30146d31f567cd42e25b6dee0b): wait til command is finished
+- [3008cba](https://github.com/quay/claircore/commit/3008cbadfcaf7dae4c00400c7e98f76d3e6b9998): Reduce database file to Packages
+
 <a name="v0.1.7"></a>
-## [v0.1.7] - 2020-09-14
+## [v0.1.7] - 2020-09-15
+### Chore
+- [123b812](https://github.com/quay/claircore/commit/123b812b02b26de9146dcf5fed3c620864ecf2be): v0.1.7 changelog bump
 ### RHEL
 - [f4d10b5](https://github.com/quay/claircore/commit/f4d10b53bcb1361f5de446c42ae0f4d271f070c3): Use last-modified to cache data
 
@@ -433,7 +511,15 @@
 - Merge pull request [#3](https://github.com/quay/claircore/issues/3) from quay/documentation
 
 
-[Unreleased]: https://github.com/quay/claircore/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/quay/claircore/compare/v0.1.15...HEAD
+[v0.1.15]: https://github.com/quay/claircore/compare/v0.1.14...v0.1.15
+[v0.1.14]: https://github.com/quay/claircore/compare/v0.1.13...v0.1.14
+[v0.1.13]: https://github.com/quay/claircore/compare/v0.1.12...v0.1.13
+[v0.1.12]: https://github.com/quay/claircore/compare/v0.1.11...v0.1.12
+[v0.1.11]: https://github.com/quay/claircore/compare/v0.1.10...v0.1.11
+[v0.1.10]: https://github.com/quay/claircore/compare/v0.1.9...v0.1.10
+[v0.1.9]: https://github.com/quay/claircore/compare/v0.1.8...v0.1.9
+[v0.1.8]: https://github.com/quay/claircore/compare/v0.1.7...v0.1.8
 [v0.1.7]: https://github.com/quay/claircore/compare/v0.1.6...v0.1.7
 [v0.1.6]: https://github.com/quay/claircore/compare/v0.1.5...v0.1.6
 [v0.1.5]: https://github.com/quay/claircore/compare/v0.1.4...v0.1.5

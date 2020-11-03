@@ -32,7 +32,6 @@ func RPMDefsToVulns(ctx context.Context, root *oval.Root, protoVulns ProtoVulnsF
 		Logger()
 	ctx = log.WithContext(ctx)
 	vulns := make([]*claircore.Vulnerability, 0, 10000)
-	pkgcache := map[string]*claircore.Package{}
 	cris := []*oval.Criterion{}
 	for _, def := range root.Definitions.Definitions {
 		// create our prototype vulnerability
@@ -55,9 +54,12 @@ func RPMDefsToVulns(ctx context.Context, root *oval.Root, protoVulns ProtoVulnsF
 		}
 		for _, criterion := range cris {
 			// lookup test
-			_, index, err := root.Tests.Lookup(criterion.TestRef)
+			testKind, index, err := root.Tests.Lookup(criterion.TestRef)
 			if err != nil {
 				log.Debug().Str("test_ref", criterion.TestRef).Msg("test ref lookup failure. moving to next criterion")
+				continue
+			}
+			if testKind != "rpminfo_test" {
 				continue
 			}
 			test := root.Tests.RPMInfoTests[index]
@@ -76,14 +78,20 @@ func RPMDefsToVulns(ctx context.Context, root *oval.Root, protoVulns ProtoVulnsF
 			for i := 0; i < len(test.ObjectRefs); i++ {
 				objRef := test.ObjectRefs[i].ObjectRef
 				stateRef := test.StateRefs[i].StateRef
-				_, objIndex, err := root.Objects.Lookup(objRef)
+				objKind, objIndex, err := root.Objects.Lookup(objRef)
 				if err != nil {
 					log.Debug().Str("object_ref", objRef).Msg("failed object lookup. moving to next object,state pair")
 					continue
 				}
-				_, stateIndex, err := root.States.Lookup(stateRef)
+				if objKind != "rpminfo_object" {
+					continue
+				}
+				stateKind, stateIndex, err := root.States.Lookup(stateRef)
 				if err != nil {
 					log.Debug().Str("state_ref", stateRef).Msg("failed state lookup. moving to next object,state pair")
+					continue
+				}
+				if stateKind != "rpminfo_state" {
 					continue
 				}
 				object := root.Objects.RPMInfoObjects[objIndex]
@@ -99,18 +107,12 @@ func RPMDefsToVulns(ctx context.Context, root *oval.Root, protoVulns ProtoVulnsF
 						vuln := *protoVuln
 						vuln.FixedInVersion = state.EVR.Body
 
-						pkgCacheKey := object.Name + module
-						if pkg, ok := pkgcache[pkgCacheKey]; !ok {
-							p := &claircore.Package{
-								Name:   object.Name,
-								Module: module,
-								Kind:   claircore.BINARY,
-							}
-							pkgcache[pkgCacheKey] = p
-							vuln.Package = p
-						} else {
-							vuln.Package = pkg
+						p := &claircore.Package{
+							Name:   object.Name,
+							Module: module,
+							Kind:   claircore.BINARY,
 						}
+						vuln.Package = p
 						vuln.FixedInVersion = state.EVR.Body
 						if state.Arch != nil {
 							vuln.ArchOperation = mapArchOp(state.Arch.Operation)
