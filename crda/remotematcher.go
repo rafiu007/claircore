@@ -33,6 +33,7 @@ const (
 	defaultEndPoint           = "/api/v2/component-analyses"
 	defaultRequestConcurrency = 10
 	defaultURL                = "https://f8a-analytics-2445582058137.production.gw.apicast.io/?user_key=9e7da76708fe374d8c10fa752e72989f"
+	defaultSource             = "clair-upstream"
 )
 
 var (
@@ -342,8 +343,9 @@ func (m *Matcher) invokeComponentAnalyses(ctx context.Context, records []*clairc
 	defer cancel()
 	reqBody, _ := json.Marshal(request)
 	req, err := http.NewRequestWithContext(tctx, http.MethodPost, m.url.String(), bytes.NewBuffer(reqBody))
-	req.Header.Set("User-Agent", "claircore/crda/RemoteMatcher")
+	req.Header.Set("User-Agent", "claircore/remote-matcher")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Source-Type", defaultSource)
 	res, err := m.client.Do(req)
 	if res != nil {
 		defer res.Body.Close()
