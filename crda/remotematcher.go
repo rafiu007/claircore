@@ -343,7 +343,7 @@ func (m *Matcher) invokeComponentAnalyses(ctx context.Context, records []*clairc
 	defer cancel()
 	reqBody, _ := json.Marshal(request)
 	req, err := http.NewRequestWithContext(tctx, http.MethodPost, m.url.String(), bytes.NewBuffer(reqBody))
-	req.Header.Set("User-Agent", "claircore/remote-matcher")
+	req.Header.Set("User-Agent", "claircore/remote_matcher")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Source-Type", defaultSource)
 	res, err := m.client.Do(req)
