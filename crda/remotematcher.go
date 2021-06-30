@@ -48,6 +48,8 @@ type Matcher struct {
 	ecosystem          string
 	requestConcurrency int
 	url                *url.URL
+	key                string
+	source             string
 }
 
 // Build struct to model CRDA V2 ComponentAnalysis response which
@@ -209,6 +211,8 @@ func (*Matcher) Vulnerable(ctx context.Context, record *claircore.IndexRecord, v
 type Config struct {
 	URL         string `json:"url" yaml:"url"`
 	Concurrency int    `json:"concurrent_requests" yaml:"concurrent_requests"`
+	Source      string `json:"source" yaml:"source"`
+	Key         string `json:"key" yaml:"key"`
 }
 
 // Configure implements driver.MatcherConfigurable.
@@ -233,6 +237,16 @@ func (m *Matcher) Configure(ctx context.Context, f driver.MatcherConfigUnmarshal
 		m.url = u
 		zlog.Info(ctx).
 			Msg("configured API URL")
+	}
+	if cfg.Source != "" {
+		m.source = cfg.Source
+		zlog.Info(ctx).
+			Msg("configured source of clair user")
+	}
+	if cfg.Key != "" {
+		m.key = cfg.Key
+		zlog.Info(ctx).
+			Msg("configured 3-scale-key for crda api")
 	}
 	m.client = c
 	zlog.Info(ctx).
